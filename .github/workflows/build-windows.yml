@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   version:
+    if: github.repository == 'nicegal/nicegal'
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -50,6 +51,7 @@ jobs:
           echo "Building $version (previous tag: ${latest:-none})"
 
   build:
+    if: github.repository == 'nicegal/nicegal'
     needs: version
     strategy:
       fail-fast: false
@@ -151,11 +153,30 @@ jobs:
       - name: Stamp the version
         run: npm pkg set version=${{ needs.version.outputs.version }}
 
-      # The release below owns uploading; there is no auto-updater yet.
+      # Generate Windows update metadata without uploading. The release job owns all assets;
+      # runtime update checks remain disabled until the updater is implemented.
       - name: Build and package the app
         run: |
           pnpm run build
           pnpm exec electron-builder --${{ matrix.target }} --x64 --publish never
+
+      - name: Verify Windows installer and update artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $prefix = 'dist/nicegal-${{ needs.version.outputs.version }}-windows-x64'
+          $expected = @(
+            "$prefix-setup.exe", "$prefix-setup.exe.blockmap",
+            "$prefix.zip", "$prefix-portable.exe", 'dist/latest.yml',
+            'dist/win-unpacked/resources/app-update.yml',
+            'dist/win-unpacked/resources/nicegal-server/nicegal-server.exe'
+          )
+          foreach ($artifact in $expected) {
+            if (-not (Test-Path -LiteralPath $artifact -PathType Leaf) -or
+                (Get-Item -LiteralPath $artifact).Length -eq 0) {
+              throw "Missing or empty Windows release artifact: $artifact"
+            }
+          }
 
       - name: Attest downloads
         if: github.repository == 'nicegal/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -165,6 +186,8 @@ jobs:
           subject-path: |
             dist/*.exe
             dist/*.zip
+            dist/*.blockmap
+            dist/latest.yml
             dist/*.AppImage
             dist/*.deb
 
@@ -183,6 +206,8 @@ jobs:
           path: |
             dist/*.exe
             dist/*.zip
+            dist/*.blockmap
+            dist/latest.yml
             dist/*.AppImage
             dist/*.deb
             dist/*.intoto.jsonl
@@ -216,4 +241,5 @@ jobs:
             --title "nicegal $version" \
             --prerelease \
             --notes-file CHANGELOG \
-            dist/*.exe dist/*.zip dist/*.AppImage dist/*.deb dist/*.intoto.jsonl
+            dist/*.exe dist/*.zip dist/*.blockmap dist/latest.yml \
+            dist/*.AppImage dist/*.deb dist/*.intoto.jsonl

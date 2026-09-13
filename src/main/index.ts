@@ -25,6 +25,9 @@ import { registerNativeIpc } from "./native/ipc";
 
 registerMediaSchemes();
 
+// Match electron-builder.yml so installed shortcuts and the running app share an identity.
+if (process.platform === "win32") app.setAppUserModelId("io.github.nicegal.nicegal");
+
 const isDev = Boolean(process.env["ELECTRON_RENDERER_URL"]);
 const rendererEntryUrl =
   process.env["ELECTRON_RENDERER_URL"] ??

@@ -18,8 +18,30 @@ pnpm install --frozen-lockfile
 pnpm build:win
 ```
 
-Windows ZIP and portable executable packages are written to `dist/`.
+Windows NSIS (`-setup.exe`), ZIP, and portable executable packages are written to
+`dist/`. The installer defaults to the current user under `%LOCALAPPDATA%/Programs/`.
 `pnpm build:unpack` produces an unpacked app for local testing.
+
+### Windows installation and future updates
+
+Upgrade by running a newer NSIS installer. Gallery databases remain in
+`%APPDATA%/nicegal/nicegal-server/` outside the installation directory.
+
+Automatic updates are not enabled yet. NSIS is the intended future
+[electron-updater](https://www.electron.build/auto-update.html) path;
+ZIP and portable builds will continue to use manual updates. The Windows build
+already embeds the public `nicegal/nicegal` GitHub Releases destination and emits
+`latest.yml` plus the NSIS blockmap. CI publishes these with the matching installer
+and provenance in one release. Local builds use `--publish never`.
+
+Keep `appId` and the NSIS identity stable across releases.
+CI stamps increasing `0.0.N` versions; `0.0.0` is only a local placeholder.
+Before enabling updates, add the runtime updater dependency and user-facing update
+controls, configure Authenticode signing and publisher verification, and test
+upgrade/restart/rollback behavior with the Rust backend shutdown. Current GitHub
+releases are prereleases with numeric versions: the future updater must explicitly
+opt into prereleases (or releases must become stable) and use the `latest` metadata
+channel. Test with two published versions before enabling checks for users.
 
 ### Linux (x64)
 
@@ -74,7 +96,8 @@ The backend [API reference](nicegal-server/INTERNAL_API.md) describes the HTTP c
 ## Verify downloads
 
 The desktop workflow attaches GitHub build-provenance attestations to the Windows
-ZIP and portable executable and Linux AppImage and Debian packages. Verify a downloaded file with GitHub CLI:
+NSIS, ZIP, portable executable, and update metadata, plus Linux AppImage and
+Debian packages. Verify a downloaded file with GitHub CLI:
 
 ```powershell
 gh attestation verify PATH_TO_DOWNLOADED_FILE --repo nicegal/nicegal

@@ -175,6 +175,7 @@ export interface JobProgress {
   /** Items completed within the CURRENT phase — pair with `total` for the within-phase bar. */
   phaseCompleted: number;
   /** Backend-measured average rate for this phase; null before any work completes.
+   * OCR excludes skipped images, including results retained when resuming.
    * Optional while an older backend binary is in use. */
   itemsPerSecond?: number | null;
   processed: number;
