@@ -1,4 +1,4 @@
-name: Build Windows app
+name: Build desktop apps
 
 on:
   push:
@@ -11,7 +11,7 @@ env:
   CARGO_TERM_COLOR: always
 
 concurrency:
-  group: windows-release-${{ github.ref }}
+  group: desktop-release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -20,14 +20,15 @@ permissions:
   attestations: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          submodules: recursive
           token: ${{ secrets.NICEGAL_PAT || github.token }}
           persist-credentials: false
           # Release numbering reads existing tags, which a shallow clone would not have.
@@ -48,12 +49,41 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Building $version (previous tag: ${latest:-none})"
 
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            target: win
+          - os: ubuntu-24.04
+            platform: linux
+            target: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          token: ${{ secrets.NICEGAL_PAT || github.token }}
+          persist-credentials: false
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev libclang-dev cmake nasm
+
       - name: Setup MSVC
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
 
       # Builds the nicegal-server Rust workspace, which lives in the nicegal-server/ submodule rather than
       # at the repo root, so the cache needs to be pointed there explicitly.
       - name: Locate libclang
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $candidates = @(
@@ -67,6 +97,7 @@ jobs:
           "LIBCLANG_PATH=$clangDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Locate Visual C++ runtime
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $runtimeDirectory = Get-ChildItem -LiteralPath (Join-Path $env:VCToolsRedistDir 'x64') -Directory |
@@ -81,7 +112,6 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
-          target: x86_64-pc-windows-msvc
           rust-src-dir: nicegal-server
 
       # build-server.cmd (below) needs uv to build the .venv-directml runtime that provides the
@@ -104,20 +134,30 @@ jobs:
 
       # Bundles the server, provider libraries, and Visual C++ runtime DLLs.
       - name: Build nicegal-server (DirectML and OpenVINO)
+        if: runner.os == 'Windows'
         run: pnpm run build:backend:win
+
+      - name: Build nicegal-server (OpenVINO and CPU)
+        if: runner.os == 'Linux'
+        run: pnpm run build:backend
+
+      - name: Verify Linux runtime inference
+        if: runner.os == 'Linux'
+        working-directory: nicegal-server
+        run: ./dev.sh test --release --locked -p nicegal-core --features ort-openvino --test linux_runtime -- --ignored
 
       # Written into package.json rather than committed: electron-builder reads the version from
       # there, and it is what lands in every artifact name.
       - name: Stamp the version
-        run: npm pkg set version=${{ steps.version.outputs.version }}
+        run: npm pkg set version=${{ needs.version.outputs.version }}
 
       # The release below owns uploading; there is no auto-updater yet.
       - name: Build and package the app
         run: |
           pnpm run build
-          pnpm exec electron-builder --win --publish never
+          pnpm exec electron-builder --${{ matrix.target }} --x64 --publish never
 
-      - name: Attest Windows downloads
+      - name: Attest downloads
         if: github.repository == 'nicegal/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         id: attest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
@@ -125,13 +165,44 @@ jobs:
           subject-path: |
             dist/*.exe
             dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
 
       - name: Preserve the attestation bundle
         if: github.repository == 'nicegal/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
-        shell: pwsh
-        run: Copy-Item -LiteralPath $env:BUNDLE_PATH -Destination dist/provenance.intoto.jsonl
+        shell: bash
+        run: cp "$BUNDLE_PATH" "dist/provenance-${{ matrix.platform }}.intoto.jsonl"
+
+      - name: Upload packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packages-${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.intoto.jsonl
+
+  publish:
+    needs: [version, build]
+    if: github.repository == 'nicegal/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout release notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download packages
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: dist
 
       - name: Tag and publish the release
         if: github.repository == 'nicegal/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -139,10 +210,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          version="${{ steps.version.outputs.version }}"
+          version="${{ needs.version.outputs.version }}"
           gh release create "v$version" \
             --target "$GITHUB_SHA" \
             --title "nicegal $version" \
             --prerelease \
             --notes-file CHANGELOG \
-            dist/*.exe dist/*.zip dist/*.intoto.jsonl
+            dist/*.exe dist/*.zip dist/*.AppImage dist/*.deb dist/*.intoto.jsonl

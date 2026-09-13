@@ -6,7 +6,7 @@ files:
   # Allowlist, not a blocklist: the repo root has a lot of dev-only content (docs, testdata,
   # the nicegal-server Rust workspace with its multi-GB target/ and .venv-*/ dirs, scratch scripts)
   # that a growing list of "!exclude" patterns would keep missing. Only these belong in the app;
-  # nicegal-server's compiled binaries ship separately through win.extraResources.
+  # nicegal-server's compiled binaries ship separately through platform extraResources.
   - out/**/*
   - resources/**/*
   - package.json
@@ -58,10 +58,43 @@ dmg:
 linux:
   target:
     - AppImage
-    - snap
     - deb
-  maintainer: electronjs.org
+  artifactName: ${name}-${version}-linux-${arch}.${ext}
+  maintainer: nicegal
   category: Utility
+  extraResources:
+    - from: LICENSE
+      to: licenses/LICENSE
+    - from: LICENSING
+      to: licenses/LICENSING
+    - from: nicegal-server/LICENSE
+      to: licenses/nicegal-server/LICENSE
+    - from: nicegal-server/vendor/fastembed/LICENSE
+      to: licenses/nicegal-server/vendor/fastembed/LICENSE
+    - from: nicegal-server/target/release
+      to: nicegal-server
+      filter:
+        - nicegal-server
+        - onnxruntime/openvino/*.so*
 appImage:
   artifactName: ${name}-${version}-linux-${arch}.${ext}
+deb:
+  # Ubuntu 24.04 is the build baseline. Include the Rust backend's OpenSSL dependency
+  # as well as Electron's desktop runtime dependencies.
+  depends:
+    - libc6 (>= 2.39)
+    - libstdc++6
+    - libgcc-s1
+    - libssl3t64
+    - libasound2t64
+    - libgbm1
+    - libgtk-3-0t64
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0t64
+    - libuuid1
+    - libsecret-1-0
 npmRebuild: false

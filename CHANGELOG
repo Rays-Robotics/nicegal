@@ -1,1 +1,1 @@
-Updated Windows builds to use the latest GitHub Actions runner and advanced the nicegal-server backend submodule.
+Added Linux desktop support with AppImage and Debian packages, and updated release automation to build and publish Windows and Linux artifacts.
