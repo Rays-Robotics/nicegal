@@ -1,0 +1,12 @@
+The original frontend application code is licensed under MIT. See LICENSE.
+
+The original backend application code in nicegal-server/ is licensed under
+PolyForm Internal Use 1.0.0. See nicegal-server/LICENSE.
+
+The modified third-party code in nicegal-server/vendor/ remains licensed under
+Apache-2.0. Its license files and attribution notices are retained within that
+directory. These application terms do not replace the licenses applicable to
+separately identified components or other third-party dependencies.
+
+Model weights downloaded during operation are subject to their respective
+publishers' licenses.

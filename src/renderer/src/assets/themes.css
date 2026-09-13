@@ -1,0 +1,121 @@
+/*
+ * Theme variants are token overrides, not parallel component frameworks. The app's components
+ * describe structure once and consume these semantic values, so new themes stay small and safe.
+ */
+
+[data-theme="seven-a"] {
+  --surface-0: #f2f2f2;
+  --surface-1: #ffffff;
+  --surface-2: #e8e8e8;
+  --surface-hover: #e5f1fb;
+  --border-subtle: #d8d8d8;
+  --border: #a9a9a9;
+  --border-strong: #737373;
+  --text-primary: #1e1e1e;
+  --text-secondary: #4f4f4f;
+  --text-tertiary: #767676;
+  --accent: #1971c2;
+  --accent-active: #1267b1;
+  --danger: #b52121;
+  --surface-caption: rgba(242, 242, 242, 0.88);
+  --search-highlight-bg: #ffe58a;
+  --search-highlight-fg: #1e1e1e;
+  --shadow-overlay: 2px 3px 7px rgb(0 0 0 / 28%);
+  --btn-face: linear-gradient(#fdfdfd 0%, #f2f2f2 48%, #e6e6e6 100%);
+  --btn-face-hover: linear-gradient(#fafdff 0%, #eaf4fc 48%, #d5eafa 100%);
+  --btn-face-active: linear-gradient(#d4e9f9 0%, #b9d9f2 100%);
+  --btn-border: #9b9b9b;
+  --btn-border-hover: #5c9fd1;
+  --btn-border-active: #3776a8;
+  --bevel-raised: inset 0 1px 0 #fff;
+  --bevel-sunken: inset 0 1px 2px rgb(0 0 0 / 20%);
+  --control-height: 23px;
+  --menubar-height: 24px;
+  --toolbar-height: 31px;
+  --toolbar-control-height: 29px;
+  --statusbar-height: 22px;
+  --track-groove: #9d9d9d;
+  --thumb-width: 11px;
+  --thumb-height: 19px;
+  --tick-mark: #aaa;
+  --tick-mark-major: #676767;
+  --font-ui: "Segoe UI", Tahoma, Arial, sans-serif;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.35;
+  --focus-ring: 1px dotted #222;
+  --focus-ring-offset: -3px;
+}
+
+[data-theme="seven-b"] {
+  --surface-0: #eef0f4;
+  --surface-1: #f8f9fb;
+  --surface-2: #e1e5eb;
+  --surface-hover: #e9f2fd;
+  --border-subtle: #c5cad2;
+  --border: #8f98a5;
+  --border-strong: #58616c;
+  --text-primary: #20252b;
+  --text-secondary: #515a66;
+  --text-tertiary: #707984;
+  --accent: #1971c2;
+  --accent-active: #1068b7;
+  --danger: #b22727;
+  --surface-caption: rgba(238, 240, 244, 0.88);
+  --search-highlight-bg: #ffe58a;
+  --search-highlight-fg: #20252b;
+  --shadow-overlay: 2px 3px 8px rgb(0 0 0 / 28%);
+  --btn-face: linear-gradient(#fff, #f4f5f7 47%, #e4e7eb 52%, #f4f5f7);
+  --btn-face-hover: linear-gradient(#fff, #f7fbff 45%, #d6eafe 55%, #f4f9ff);
+  --btn-face-active: linear-gradient(#d5dbe3, #e9edf1 55%, #f8f9fa);
+  --btn-border: #89939e;
+  --btn-border-hover: #5789bb;
+  --btn-border-active: #557d9e;
+  --bevel-raised: inset 1px 1px #fff, inset -1px -1px #c3c9d1;
+  --bevel-sunken: inset 1px 1px #8e98a6, inset -1px -1px #fff;
+  --control-height: 23px;
+  --menubar-height: 23px;
+  --toolbar-height: 37px;
+  --toolbar-control-height: 35px;
+  --statusbar-height: 22px;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --track-groove: #9ca6b0;
+  --thumb-width: 10px;
+  --thumb-height: 16px;
+  --tick-mark: #88919b;
+  --tick-mark-major: #4f5964;
+  --font-ui: Tahoma, "MS Sans Serif", sans-serif;
+  --font-size-sm: 11px;
+  --font-size-md: 12px;
+  --font-weight-semibold: 700;
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.35;
+  --space-1: 2px;
+  --space-2: 3px;
+  --space-3: 4px;
+  --space-4: 5px;
+  --space-5: 6px;
+  --space-6: 7px;
+  --space-7: 8px;
+  --space-8: 9px;
+  --space-9: 10px;
+  --space-10: 12px;
+  --space-12: 14px;
+  --space-14: 16px;
+  --space-16: 18px;
+  --focus-ring: 1px dotted #1c5e9e;
+  --focus-ring-offset: -3px;
+}
+
+[data-theme] {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+}
+
+[data-theme] button,
+[data-theme] input {
+  font: inherit;
+}

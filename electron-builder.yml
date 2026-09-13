@@ -1,0 +1,67 @@
+appId: com.electron.app
+productName: nicegal
+directories:
+  buildResources: build
+files:
+  # Allowlist, not a blocklist: the repo root has a lot of dev-only content (docs, testdata,
+  # the nicegal-server Rust workspace with its multi-GB target/ and .venv-*/ dirs, scratch scripts)
+  # that a growing list of "!exclude" patterns would keep missing. Only these belong in the app;
+  # nicegal-server's compiled binaries ship separately through win.extraResources.
+  - out/**/*
+  - resources/**/*
+  - package.json
+asarUnpack:
+  - resources/**
+win:
+  # GitHub artifact provenance is separate from Windows Authenticode signing.
+  signExecutable: false
+  executableName: nicegal
+  artifactName: ${name}-${version}-windows-${arch}.${ext}
+  target:
+    # - nsis
+    - zip
+    - portable
+  extraResources:
+    - from: LICENSE
+      to: licenses/LICENSE
+    - from: LICENSING
+      to: licenses/LICENSING
+    - from: nicegal-server/LICENSE
+      to: licenses/nicegal-server/LICENSE
+    - from: nicegal-server/vendor/fastembed/LICENSE
+      to: licenses/nicegal-server/vendor/fastembed/LICENSE
+    - from: nicegal-server/target/release
+      to: nicegal-server
+      filter:
+        - nicegal-server.exe
+        - "*.dll"
+        - onnxruntime/**/*.dll
+portable:
+  artifactName: ${name}-${version}-windows-${arch}-portable.${ext}
+  unpackDirName: nicegal
+
+nsis:
+  artifactName: ${name}-${version}-windows-${arch}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}-macos-${arch}.${ext}
+linux:
+  target:
+    - AppImage
+    - snap
+    - deb
+  maintainer: electronjs.org
+  category: Utility
+appImage:
+  artifactName: ${name}-${version}-linux-${arch}.${ext}
+npmRebuild: false

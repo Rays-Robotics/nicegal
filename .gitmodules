@@ -1,0 +1,4 @@
+[submodule "nicegal-server"]
+	path = nicegal-server
+	url = https://github.com/nicegal/nicegal-server.git
+	branch = main

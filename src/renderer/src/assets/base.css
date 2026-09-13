@@ -1,0 +1,24 @@
+:root {
+  color: var(--text-primary);
+  background: var(--surface-0);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  font-weight: var(--font-weight-normal);
+}
+
+body {
+  min-height: 100vh;
+  color: inherit;
+  background: inherit;
+  line-height: var(--line-height-normal);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-md);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

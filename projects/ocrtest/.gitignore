@@ -1,0 +1,7 @@
+.venv/
+.venv-dml/
+.venv-ort-openvino/
+ocr-output/
+benchmark-half/
+tesseract-index.db
+__pycache__/

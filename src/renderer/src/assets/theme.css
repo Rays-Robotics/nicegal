@@ -1,0 +1,291 @@
+/* Central theme tokens: Windows 7 desktop-app chrome, the flat "Basic" theme throughout — no
+   glass, no translucency, no blur, no gloss, on the title bar OR on the buttons/menus/trackbars.
+   Rendered as if hosted on Windows 11 — hence a selection/accent blue distinct from the old Win7
+   pale-blue default. Dark theme and other platforms are deferred (see AGENTS.md).
+   Everything else should read from these custom properties rather than hardcoding values. */
+
+:root {
+  --metadata-panel-width: 280px;
+  /* Surfaces: chrome (toolbar/panels/menus) is a step darker than content, like Explorer */
+  --surface-0: #ffffff;
+  --surface-1: #f0f1f2;
+  --surface-2: #e4e4e4;
+  --surface-hover: #eaf6fd;
+
+  /* Borders: flat colors only. Layered depth (the highlight/shadow that makes a control read as
+     Win32 rather than a single flat KDE-style line) lives in the bevel box-shadows below. */
+  --border-subtle: #e5e5e5;
+  --border: #acacac;
+  --border-strong: #7a7a7a;
+
+  /* Bevel: a thin inset highlight/shadow pair, layered on top of a control's flat border and
+     --btn-face* gradient, that reads as a genuine raised/sunken Win32 edge instead of one flat
+     line. Construction follows 7.css's --w7-el-sd / --w7-el-sd-a (inset highlight on the resting
+     state, inset dark-then-light on the pressed state); values are ours.
+     --bevel-raised must stay a TOP-edge-only highlight. A bright 1px line tracing the whole
+     perimeter over a light gradient face reads as Aero glass; one light line on top, paired with
+     the darker border, is the flat Win32 raised bevel. */
+  --bevel-raised: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  --bevel-sunken: inset 1px 1px 0 rgba(0, 0, 0, 0.16), inset -1px 1px 0 rgba(0, 0, 0, 0.05);
+
+  /* Text */
+  --text-primary: #1a1a1a;
+  --text-secondary: #4d4d4d;
+  --text-tertiary: #7a7a7a;
+  --text-on-accent: #ffffff;
+
+  /* Accent — a selection blue distinct from stock Win7 (#3399ff) and stock Win11 (#0078d4) */
+  --accent: #1971c2;
+  --accent-active: #0f4f8f;
+
+  /* Status */
+  --danger: #c42b1c;
+
+  /* Search match caption: the "why this matched" strip pinned over a gallery tile (see
+     VirtualGallery.svelte's .match-caption), and the highlighted terms within it. The surface is
+     translucent so the tile's image stays readable behind the strip. */
+  --surface-caption: rgba(240, 240, 240, 0.88);
+  --search-highlight-bg: #ffe58a;
+  --search-highlight-fg: #1a1a1a;
+  /* Semantic-search nudge: a pale yellow tab attached below the search scope control. */
+  --semantic-tab-background: #fff3c2;
+  --semantic-tab-border: #d4ad4e;
+  --semantic-tab-text: #695008;
+  --semantic-tab-link: #765500;
+  --semantic-tab-link-hover: #4d3700;
+
+  /* Overlay shadow: the single crisp offset shadow every popover/context-menu/overlay uses —
+     a real Windows context menu, not soft multi-layer elevation. */
+  --shadow-overlay: 1px 2px 6px rgba(0, 0, 0, 0.3);
+  --dialog-backdrop: rgba(0, 0, 0, 0.22);
+  --dialog-width: 720px;
+  --dialog-max-height: 760px;
+  --dialog-title-size: 18px;
+
+  /* Classic Win32 button chrome: a faint top-to-bottom bevel, not a flat fill — but a narrow one.
+     Keep the range tight. A near-white top fading to a visibly darker bottom reads as glossy
+     Aero glass; this much says "raised" without the shine. */
+  --btn-face: linear-gradient(to bottom, #f6f6f6 0%, #e7e7e7 100%);
+  --btn-face-hover: linear-gradient(to bottom, #eaf4fb 0%, #ddeef9 100%);
+  --btn-face-active: linear-gradient(to bottom, #d7edfb 0%, #c3e2f5 100%);
+  --btn-border: var(--border);
+  --btn-border-hover: #7eb4ea;
+  --btn-border-active: #3c9fe0;
+
+  /* Scrollbar thumb pressed/held fill: a soft, desaturated blue — modeled on 7.css's active
+     scrollbar gradient (#c4e5f6→#98d1ef), NOT the saturated --accent and NOT a sunken bevel.
+     Both of those read as harsh/too-blue on a narrow 16px handle (live review, seven-b). */
+  --scrollbar-thumb-active: linear-gradient(to bottom, #c4e5f6 0%, #98d1ef 100%);
+  --scrollbar-thumb-active-border: #6d91ab;
+
+  /* Compact control sizing */
+  --control-height: 26px;
+  --menubar-height: 22px;
+  --toolbar-height: 34px;
+  /* The search row is its own, roomier toolbar. Its field, text buttons, and icon controls use
+     this one metric so chrome stays aligned as a theme changes its toolbar density. */
+  --toolbar-control-height: 32px;
+  --statusbar-height: 22px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+
+  /* Trackbar (Win32 slider): a sunken groove, a tall rectangular thumb, and a tick ruler */
+  --track-height: 4px;
+  --track-groove: linear-gradient(to bottom, #d0d0d0 0%, #f2f2f2 100%);
+  --thumb-width: 10px;
+  --thumb-height: 16px;
+  --tick-mark: #9a9a9a;
+  --tick-mark-major: #6e6e6e;
+
+  /* Type — Segoe UI: this is a Windows-native app, not a cross-platform web app. */
+  --font-ui: "Segoe UI", system-ui, -apple-system, Roboto, Ubuntu, sans-serif;
+  --font-size-sm: 11px;
+  --font-size-md: 12px;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+  --line-height-tight: 1.3;
+  --line-height-normal: 1.4;
+
+  /* Spacing: a dense, mostly-integer-px scale rather than an 8pt web grid — compact Win32 chrome
+     packs controls 2-4px apart, so the scale needs steps that coarse grids skip. Every step here
+     is a value some component already used; nothing was invented. */
+  --space-1: 1px;
+  --space-2: 2px;
+  --space-3: 3px;
+  --space-4: 4px;
+  --space-5: 5px;
+  --space-6: 6px;
+  --space-7: 7px;
+  --space-8: 8px;
+  --space-9: 9px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+
+  /* Z-index: only four layers exist today. --z-perf-hud is intentionally outside the ordered
+     scale — it is a dev-only overlay that must sit above everything else in the document. */
+  --z-raised: 1;
+  --z-panel: 10;
+  --z-popover: 100;
+  --z-perf-hud: 2147483000;
+
+  /* Focus ring: a dotted outline (the Win32 keyboard-focus convention), inset rather than a
+     glow/halo per the no-soft-shadows rule. */
+  --focus-ring: 1px dotted var(--text-tertiary);
+  --focus-ring-offset: 1px;
+
+  /* Motion — kept short, this is a compact utility app, not a showcase */
+  --duration-fast: 90ms;
+
+  color-scheme: light;
+}
+
+/*
+ * Composable application toolbar pattern. Use these classes for a full chrome row, standalone
+ * controls, joined control groups, dividers, and readouts instead of recreating toolbar spacing
+ * or Win32 button bevels per feature. Components retain only their semantic layout or variants.
+ */
+.app-toolbar {
+  display: flex;
+  min-width: 0;
+  flex: none;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-8);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+}
+
+.app-toolbar-button {
+  display: inline-flex;
+  min-height: var(--toolbar-control-height);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-sm);
+  background: var(--btn-face);
+  box-shadow: var(--bevel-raised);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-toolbar-icon-button {
+  width: var(--toolbar-control-height);
+  padding: 0;
+}
+
+.app-toolbar-text-button {
+  gap: var(--space-4);
+  padding: 0 var(--space-6);
+  white-space: nowrap;
+}
+
+.app-toolbar-button:hover:not(:disabled) {
+  border-color: var(--btn-border-hover);
+  background: var(--btn-face-hover);
+  color: var(--text-primary);
+}
+
+.app-toolbar-button:active:not(:disabled),
+.app-toolbar-button.active,
+.app-toolbar-button.selected {
+  border-color: var(--btn-border-active);
+  background: var(--btn-face-active);
+  box-shadow: var(--bevel-sunken);
+  color: var(--text-primary);
+}
+
+.app-toolbar-button:disabled {
+  color: var(--text-tertiary);
+  opacity: 0.65;
+  cursor: default;
+}
+
+.app-toolbar-button:focus-visible {
+  position: relative;
+  z-index: var(--z-raised);
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.app-toolbar-group {
+  display: flex;
+  height: var(--toolbar-control-height);
+  flex: none;
+  align-items: center;
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-sm);
+  background: var(--btn-face);
+  box-shadow: var(--bevel-raised);
+  color: var(--text-secondary);
+}
+
+.app-toolbar-group > .app-toolbar-button {
+  width: var(--toolbar-control-height);
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--btn-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+}
+
+.app-toolbar-group > .app-toolbar-text-button {
+  width: auto;
+  padding: 0 var(--space-6);
+}
+
+.app-toolbar-group > .app-toolbar-button:first-child {
+  border-left: 0;
+}
+
+.app-toolbar-group > .app-toolbar-button:hover:not(:disabled) {
+  background: var(--btn-face-hover);
+  color: var(--text-primary);
+}
+
+.app-toolbar-group > .app-toolbar-button:active:not(:disabled),
+.app-toolbar-group > .app-toolbar-button.active,
+.app-toolbar-group > .app-toolbar-button.selected {
+  background: var(--btn-face-active);
+  box-shadow: var(--bevel-sunken);
+  color: var(--text-primary);
+}
+
+.app-toolbar-group > .app-toolbar-button.selected {
+  border-left-color: var(--btn-border-active);
+}
+
+.app-toolbar-group > .app-toolbar-button.selected + .app-toolbar-button {
+  border-left-color: var(--btn-border-active);
+}
+
+.app-toolbar-divider {
+  width: 1px;
+  height: 18px;
+  flex: none;
+  background: var(--border-subtle);
+}
+
+.app-toolbar-readout {
+  display: inline-flex;
+  min-width: 42px;
+  min-height: var(--toolbar-control-height);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-8);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  box-shadow: var(--bevel-raised);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
