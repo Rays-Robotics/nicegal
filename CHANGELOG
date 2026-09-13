@@ -1,1 +1,1 @@
-Initial release of Nicegal, a Windows desktop gallery for fast thumbnail browsing, filename/OCR and semantic text search, and CLIP image similarity search.
+Updated Windows builds to use the latest GitHub Actions runner and advanced the nicegal-server backend submodule.
