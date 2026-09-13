@@ -1,1 +1,1 @@
-Added Windows NSIS installer packaging with stable app identity, user-selectable installation that preserves app data, and CI-published update metadata and provenance.
+Updated repository, clone, homepage, and backend links to the new Nicegal locations, and advanced the nicegal-server submodule.

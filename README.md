@@ -2,7 +2,7 @@
 
 A Windows and Linux desktop gallery with fast thumbnail browsing, filename and OCR search,
 semantic text search, and CLIP image similarity search. The frontend uses Electron,
-Svelte 5, and TypeScript; [nicegal-server](https://github.com/nicegal/nicegal-server)
+Svelte 5, and TypeScript; [nicegal-server](https://github.com/bruh20059234802020490/nicegal-server)
 provides the Rust indexing and search backend.
 
 ## Build from source
@@ -12,7 +12,7 @@ C++ build tools, and uv for Windows x64. The backend
 build provisions Python 3.13 and its ONNX Runtime distributions with uv.
 
 ```powershell
-git clone --recurse-submodules https://github.com/nicegal/nicegal.git
+git clone --recurse-submodules https://github.com/bruh20059234802020490/nicegal.git
 cd nicegal
 pnpm install --frozen-lockfile
 pnpm build:win

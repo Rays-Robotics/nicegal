@@ -3,7 +3,7 @@
   "license": "MIT",
   "version": "0.0.0",
   "description": "Desktop gallery with OCR, semantic text, and image similarity search",
-  "homepage": "https://github.com/nicegal/nicegal",
+  "homepage": "https://github.com/bruh20059234802020490/nicegal",
   "author": "nicegal",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@11.24.0",
