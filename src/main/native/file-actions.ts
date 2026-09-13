@@ -1,5 +1,5 @@
 import { clipboard, ClipboardItem, shell } from "electron";
-import { isAbsolute } from "node:path";
+import { dirname, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { NicegalServerClient } from "../backend/nicegal-server-client";
@@ -41,8 +41,19 @@ export async function openFiles(files: readonly ResolvedFileTarget[]): Promise<v
   }
 }
 
-export function revealFiles(files: readonly ResolvedFileTarget[]): void {
-  for (const file of files) shell.showItemInFolder(file.path);
+export async function revealFiles(files: readonly ResolvedFileTarget[]): Promise<void> {
+  if (process.platform !== "linux") {
+    for (const file of files) shell.showItemInFolder(file.path);
+    return;
+  }
+
+  const results = await Promise.all(
+    files.map(async (file) => ({ file, error: await shell.openPath(dirname(file.path)) })),
+  );
+  const failures = results.filter((result) => result.error);
+  if (failures.length) {
+    throw new Error(failures.map(({ file, error }) => `${file.displayName}: ${error}`).join("\n"));
+  }
 }
 
 /** Places file references on the clipboard rather than exposing paths to renderer code. */

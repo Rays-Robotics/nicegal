@@ -1,7 +1,37 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { onMount, type Snippet } from "svelte";
+
+  import type { UpdateStatus as UpdateState } from "../../../shared/updates";
 
   import PerfHud from "./PerfHud.svelte";
+  import UpdateStatus from "./UpdateStatus.svelte";
+
+  let update = $state<UpdateState>({ phase: "disabled", version: null });
+  onMount(() => {
+    // Subscribe before reading the snapshot; an intervening event is newer than that read.
+    let receivedEvent = false;
+    let disposed = false;
+    const unsubscribe = window.nicegal.updates.onStatusChanged((status) => {
+      receivedEvent = true;
+      update = status;
+    });
+    void window.nicegal.updates
+      .getStatus()
+      .then((status) => {
+        if (!disposed && !receivedEvent) update = status;
+      })
+      .catch((error: unknown) => console.error("Could not read update status", error));
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  });
+
+  function openReleaseNotes(): void {
+    void window.nicegal.updates.openReleaseNotes().catch((error: unknown) => {
+      console.error("Could not open release notes", error);
+    });
+  }
 
   let {
     theme,
@@ -28,6 +58,7 @@
     {@render workspace()}
   </section>
   <footer class="status-bar">
+    <UpdateStatus status={update} onnotes={openReleaseNotes} />
     {@render status()}
   </footer>
   <PerfHud />
@@ -62,6 +93,10 @@
     background: var(--surface-1);
     color: var(--text-tertiary);
     font-size: var(--font-size-sm);
+  }
+
+  .status-bar:has(:global(.update-status)) {
+    padding-left: 0;
   }
 
   .status-bar :global(.status-segment) {

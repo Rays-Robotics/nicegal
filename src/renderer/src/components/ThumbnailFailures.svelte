@@ -2,7 +2,6 @@
   import type { ThumbnailFailure } from "../lib/gallery/thumbnail-scheduler";
 
   import { errorMessage } from "../lib/errors";
-  import Modal from "./Modal.svelte";
 
   let {
     failures,
@@ -38,26 +37,11 @@
 </script>
 
 {#if failures.length}
-  <div class="thumbnail-notice">
-    <span role="status"
-      >{failures.length} {failures.length === 1 ? "thumbnail" : "thumbnails"} unavailable</span
+  <details class="thumbnail-diagnostics" bind:open={showDetails}>
+    <summary
+      >{failures.length} {failures.length === 1 ? "thumbnail" : "thumbnails"} unavailable</summary
     >
-    <button class="ui-button" type="button" onclick={retry}>Retry thumbnails</button>
-    <button
-      class="ui-button"
-      type="button"
-      onclick={() => {
-        copyStatus = "";
-        showDetails = true;
-      }}>Details</button
-    >
-  </div>
-{/if}
-
-{#if showDetails}
-  <Modal labelledby="thumbnail-failure-title" onclose={() => (showDetails = false)}>
     <div class="thumbnail-details">
-      <h2 id="thumbnail-failure-title">Thumbnails unavailable</h2>
       <p>
         Automatic retries stopped. Check that the files are accessible, then retry. You can still
         try opening an image.
@@ -69,47 +53,40 @@
         <button class="ui-button" type="button" onclick={retry} disabled={!failures.length}
           >Retry thumbnails</button
         >
-        <button class="ui-button" type="button" onclick={() => (showDetails = false)}>Close</button>
+        <button
+          class="ui-button"
+          type="button"
+          onclick={(event) => {
+            showDetails = false;
+            event.currentTarget.closest("details")?.querySelector("summary")?.focus();
+          }}>Dismiss</button
+        >
       </div>
     </div>
-  </Modal>
+  </details>
 {/if}
 
 <style>
-  .thumbnail-notice {
-    position: absolute;
-    top: var(--space-6);
-    left: var(--space-6);
-    right: var(--space-16);
-    z-index: var(--z-raised);
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-6);
-    padding: var(--space-4) var(--space-6);
-    border: 1px solid var(--border);
-    background: var(--surface-0);
+  .thumbnail-diagnostics {
+    padding-block: var(--space-8);
+    border-bottom: 1px solid var(--border-subtle);
     color: var(--text-primary);
-    font-size: var(--font-size-sm);
-    box-shadow: var(--shadow-overlay);
+    font-size: var(--font-size-md);
   }
-  .thumbnail-notice span {
-    flex: 1;
+  summary {
+    cursor: pointer;
+  }
+  summary:focus-visible {
+    outline: var(--focus-ring);
   }
   .thumbnail-details {
     display: grid;
     gap: var(--space-6);
-    padding: var(--space-12);
-    background: var(--surface-0);
-    border: 1px solid var(--border);
+    padding-top: var(--space-6);
     font-size: var(--font-size-md);
   }
-  h2,
   p {
     margin: 0;
-  }
-  h2 {
-    font-size: var(--font-size-md);
   }
   textarea {
     width: 100%;

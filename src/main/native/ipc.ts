@@ -29,23 +29,30 @@ export function registerNativeIpc(context: NativeIpcContext): void {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
 
-  handleTrustedIpc(IPC_CHANNELS.native.chooseVisualSearchImage, context.isTrustedSender, async (event) => {
-    const owner = BrowserWindow.fromWebContents(event.sender);
-    if (!owner) throw new Error("Image picker requires an owning application window");
-    const result = await dialog.showOpenDialog(owner, {
-      properties: ["openFile"],
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp", "bmp"] }],
-    });
-    const path = result.canceled ? undefined : result.filePaths[0];
-    if (!path) return null;
-    const info = await stat(path);
-    const limit = 16 * 1024 * 1024;
-    if (!info.isFile() || info.size > limit) {
-      throw new Error("Choose an image smaller than 16 MB for visual search.");
-    }
-    const bytes = await readFile(path);
-    return { displayName: path.split(/[\\/]/).pop() ?? "Selected image", bytesBase64: bytes.toString("base64") };
-  });
+  handleTrustedIpc(
+    IPC_CHANNELS.native.chooseVisualSearchImage,
+    context.isTrustedSender,
+    async (event) => {
+      const owner = BrowserWindow.fromWebContents(event.sender);
+      if (!owner) throw new Error("Image picker requires an owning application window");
+      const result = await dialog.showOpenDialog(owner, {
+        properties: ["openFile"],
+        filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp", "bmp"] }],
+      });
+      const path = result.canceled ? undefined : result.filePaths[0];
+      if (!path) return null;
+      const info = await stat(path);
+      const limit = 16 * 1024 * 1024;
+      if (!info.isFile() || info.size > limit) {
+        throw new Error("Choose an image smaller than 16 MB for visual search.");
+      }
+      const bytes = await readFile(path);
+      return {
+        displayName: path.split(/[\\/]/).pop() ?? "Selected image",
+        bytesBase64: bytes.toString("base64"),
+      };
+    },
+  );
 
   handleTrustedIpc(
     IPC_CHANNELS.native.showFileContextMenu,
@@ -57,7 +64,15 @@ export function registerNativeIpc(context: NativeIpcContext): void {
 
       const files = await resolveFileTargets(context.client, parseAssetIds(value));
       if (!files.length) return;
-      Menu.buildFromTemplate(fileMenuTemplate(owner, files, () => event.sender.send(IPC_CHANNELS.native.addToVisualSearch, files.map((file) => file.id)))).popup({ window: owner });
+      Menu.buildFromTemplate(
+        fileMenuTemplate(owner, files, (replace) =>
+          event.sender.send(
+            IPC_CHANNELS.native.addToVisualSearch,
+            files.map((file) => file.id),
+            replace,
+          ),
+        ),
+      ).popup({ window: owner });
     },
   );
 }
@@ -83,37 +98,44 @@ function parseAssetIds(value: unknown): string[] {
 function fileMenuTemplate(
   owner: BrowserWindow,
   files: readonly ResolvedFileTarget[],
-  addToVisualSearch: () => void,
+  visualSearch: (replace: boolean) => void,
 ): MenuItemConstructorOptions[] {
   const multiple = files.length > 1;
   return [
-    { label: multiple ? `Add ${files.length} to Visual Search` : "Add to Visual Search", click: addToVisualSearch },
+    {
+      label: "Find similar images",
+      click: () => visualSearch(true),
+    },
+    {
+      label: multiple ? `Add ${files.length} images to visual search` : "Add to visual search",
+      click: () => visualSearch(false),
+    },
     { type: "separator" },
     {
-      label: multiple ? `Open ${files.length} Items in Default Apps` : "Open in Default App",
+      label: multiple ? `Open ${files.length} items in default apps` : "Open in default app",
       click: () => runFileAction(owner, "Open failed", () => openFiles(files)),
     },
     { type: "separator" },
     {
-      label: multiple ? `Copy ${files.length} Items` : "Copy",
+      label: multiple ? `Copy ${files.length} items` : "Copy",
       click: () => runFileAction(owner, "Copy failed", () => copyFiles(files)),
     },
     {
-      label: multiple ? `Copy ${files.length} Paths` : "Copy as Path",
+      label: multiple ? `Copy ${files.length} paths` : "Copy as path",
       click: () => runFileAction(owner, "Copy as Path failed", () => copyFilePaths(files)),
     },
     { type: "separator" },
     {
       label: revealLabel(),
-      click: () => revealFiles(files),
+      click: () => runFileAction(owner, "Reveal failed", () => revealFiles(files)),
     },
   ];
 }
 
 function revealLabel(): string {
   if (process.platform === "darwin") return "Reveal in Finder";
-  if (process.platform === "win32") return "Reveal in File Explorer";
-  return "Reveal in File Manager";
+  if (process.platform === "win32") return "Reveal in Explorer";
+  return "Open Containing Folder";
 }
 
 function runFileAction(owner: BrowserWindow, title: string, action: () => Promise<void>): void {

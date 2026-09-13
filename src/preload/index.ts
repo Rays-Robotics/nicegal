@@ -21,8 +21,22 @@ import type {
   SearchResponse,
   Timeline,
 } from "../shared/backend";
+import type { UpdateBridge, UpdateStatus } from "../shared/updates";
 
 import { IPC_CHANNELS } from "../shared/ipc-channels";
+
+const updates: UpdateBridge = {
+  getPreferences: () => ipcRenderer.invoke(IPC_CHANNELS.updates.preferences),
+  setEnabled: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.updates.setEnabled, enabled),
+  getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.updates.status),
+  onStatusChanged(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, status: UpdateStatus): void =>
+      listener(status);
+    ipcRenderer.on(IPC_CHANNELS.updates.statusChanged, handler);
+    return () => ipcRenderer.off(IPC_CHANNELS.updates.statusChanged, handler);
+  },
+  openReleaseNotes: () => ipcRenderer.invoke(IPC_CHANNELS.updates.releaseNotes),
+};
 
 const backend: NicegalBridge["backend"] = {
   getBackendStatus(): Promise<BackendStatus> {
@@ -64,6 +78,9 @@ const backend: NicegalBridge["backend"] = {
   },
   searchOcr(request: SearchRequest): Promise<SearchResponse> {
     return ipcRenderer.invoke(IPC_CHANNELS.backend.search, request);
+  },
+  cancelSearch(): Promise<void> {
+    return ipcRenderer.invoke(IPC_CHANNELS.backend.cancelSearch);
   },
   startJob(request: JobRequest): Promise<JobSnapshot> {
     return ipcRenderer.invoke(IPC_CHANNELS.backend.startJob, request);
@@ -120,10 +137,14 @@ const native: NativeBridge = {
   chooseVisualSearchImage(): Promise<ExternalVisualReference | null> {
     return ipcRenderer.invoke(IPC_CHANNELS.native.chooseVisualSearchImage);
   },
-  onAddToVisualSearch(listener: (assetIds: string[]) => void): () => void {
-    const handler = (_event: Electron.IpcRendererEvent, assetIds: unknown): void => {
+  onAddToVisualSearch(listener: (assetIds: string[], replace: boolean) => void): () => void {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      assetIds: unknown,
+      replace: unknown,
+    ): void => {
       if (Array.isArray(assetIds) && assetIds.every((id) => typeof id === "string"))
-        listener(assetIds);
+        listener(assetIds, replace === true);
     };
     ipcRenderer.on(IPC_CHANNELS.native.addToVisualSearch, handler);
     return () => ipcRenderer.off(IPC_CHANNELS.native.addToVisualSearch, handler);
@@ -133,4 +154,4 @@ const native: NativeBridge = {
   },
 };
 
-contextBridge.exposeInMainWorld("nicegal", { backend, native } satisfies NicegalBridge);
+contextBridge.exposeInMainWorld("nicegal", { backend, native, updates } satisfies NicegalBridge);

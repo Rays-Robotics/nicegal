@@ -6,6 +6,11 @@
 
 :root {
   --metadata-panel-width: 280px;
+  /* Playlist-style search groups: content-colored background, plain heading and a fine rule. */
+  --search-section-height: 26px;
+  --search-section-gap: 6px;
+  --search-section-text: var(--text-primary);
+  --search-section-rule: var(--border);
   /* Surfaces: chrome (toolbar/panels/menus) is a step darker than content, like Explorer */
   --surface-0: #ffffff;
   --surface-1: #f0f1f2;

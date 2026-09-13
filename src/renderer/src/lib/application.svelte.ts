@@ -36,6 +36,7 @@ export interface ApplicationCommands {
   readonly unregisterLibrary: (root: string) => Promise<boolean>;
   readonly removeLibrary: (root: string, purge: boolean) => Promise<void>;
   readonly dismissWelcome: () => void;
+  readonly showWelcome: () => void;
 }
 
 export interface ApplicationContext {
@@ -93,6 +94,9 @@ class Application implements ApplicationContext {
       unregisterLibrary: (root: string) => this.unregisterLibrary(root),
       removeLibrary: (root: string, purge: boolean) => this.removeLibrary(root, purge),
       dismissWelcome: () => this.dismissWelcome(),
+      showWelcome: () => {
+        this.welcomeVisible = true;
+      },
     });
   }
 
@@ -102,13 +106,16 @@ class Application implements ApplicationContext {
 
     const { catalog, runtime } = this.services;
     const unsubscribeSettings = settings.subscribe((value) => catalog.onSettingsChange(value));
-    const unsubscribeVisualSearch = window.nicegal.native.onAddToVisualSearch((assetIds) => {
-      this.services.ocrSearch.addLibraryReferences(
-        catalog.items
-          .filter((item) => assetIds.includes(item.id))
-          .map((item) => ({ id: item.id, displayName: item.displayName })),
-      );
-    });
+    const unsubscribeVisualSearch = window.nicegal.native.onAddToVisualSearch(
+      (assetIds, replace) => {
+        this.services.ocrSearch.addLibraryReferences(
+          catalog.items
+            .filter((item) => assetIds.includes(item.id))
+            .map((item) => ({ id: item.id, displayName: item.displayName })),
+          replace,
+        );
+      },
+    );
     const unsubscribeBackendStatus = window.nicegal.backend.onBackendStatusChanged((status) => {
       const recovered = !catalog.backendStatus.ready && status.ready;
       const disconnected = catalog.backendStatus.ready && !status.ready;

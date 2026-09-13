@@ -131,6 +131,20 @@
           <dt>Visual search</dt>
           <dd>{info.imageIndexed ? "Indexed" : "Needs indexing"}</dd>
         </dl>
+        <h3>Recognized text</h3>
+        {#if info.ocrText?.trim()}
+          <textarea
+            class="ocr-text"
+            aria-label="Recognized text"
+            readonly
+            spellcheck={false}
+            value={info.ocrText}
+          ></textarea>
+        {:else if info.ocrState === "indexed"}
+          <p>No text found in this image.</p>
+        {:else}
+          <p>OCR text will appear here after this image is indexed.</p>
+        {/if}
         {#if info.decodeFailed}<p>
             The file could not be decoded during indexing. Use Libraries → Advanced options → Retry
             failed files after checking the file.
@@ -233,6 +247,26 @@
     overflow: auto;
     white-space: pre-wrap;
     font-size: var(--font-size-sm);
+  }
+  textarea.ocr-text {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 56px;
+    max-height: 300px;
+    margin: 0;
+    padding: var(--space-6);
+    resize: vertical;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   @media (max-width: 600px) {
     .metadata-panel {

@@ -1,4 +1,11 @@
 export const IPC_CHANNELS = {
+  updates: {
+    preferences: "updates:preferences",
+    setEnabled: "updates:set-enabled",
+    status: "updates:status",
+    statusChanged: "updates:status-changed",
+    releaseNotes: "updates:release-notes",
+  },
   backend: {
     status: "backend:status",
     statusChanged: "backend:status-changed",
@@ -12,6 +19,7 @@ export const IPC_CHANNELS = {
     getOcrModels: "backend:get-ocr-models",
     getSearchModels: "backend:get-search-models",
     search: "backend:search",
+    cancelSearch: "backend:cancel-search",
     startJob: "backend:start-job",
     cancelJob: "backend:cancel-job",
     subscribeJob: "backend:subscribe-job",

@@ -70,7 +70,14 @@ export function createLibraryViewController(
   const galleryScroll = new GalleryScrollState();
   const gallerySelection = new GallerySelection();
   let activeDialog = $state<"libraries" | "settings" | null>(null);
-  let detailIndex = $state<number | null>(null);
+  // Progressive results may move an image between sections. The viewer follows its ID, not
+  // whichever image later occupies the index that was clicked.
+  let detailId = $state<string | null>(null);
+  const detailIndex = $derived.by(() => {
+    if (detailId === null) return null;
+    const index = filteredItems.findIndex((item) => item.id === detailId);
+    return index < 0 ? null : index;
+  });
   let detailStatus = $state<DetailViewStatus | null>(null);
   let restoringLibraryView = Boolean(catalog.libraryRoot);
   let disposed = false;
@@ -80,9 +87,8 @@ export function createLibraryViewController(
   /** The generation that currently owns `GalleryScrollState`'s restore suppression. */
   let preparedLibraryViewRestoreGeneration: number | null = null;
   let viewStateSaveTimer: ReturnType<typeof setTimeout> | undefined;
-  /** The inputs that define the current gallery view (result set, ordering, and layout). Any change
-   * deselects, because a selection made against one view must not leak hidden/stale targets into
-   * the next. */
+  /** New queries/references clear selection. Presentation-only changes and progressive arrivals
+   * retain IDs, independently of the current result ordering or layout. */
   let selectionSearchKey: string | undefined;
   const searchView = $derived(ocrSearch.apply(catalog.items));
   const filteredItems = $derived(searchView.items);
@@ -109,6 +115,10 @@ export function createLibraryViewController(
   const indexingRunning = $derived(jobs.active?.type === "ocrIndex" && isActiveJob(jobs.active));
   /** `undefined` (out-of-range index, e.g. the filter changed while open) closes the detail view. */
   const detailItem = $derived(detailIndex !== null ? filteredItems[detailIndex] : undefined);
+  $effect(() => {
+    // Native image-search actions also work from the detail view, where the toolbar is hidden.
+    if (ocrSearch.composerOpen) detailId = null;
+  });
   const libraryName = $derived(
     catalog.libraryRoot
       ? (catalog.libraryRoot.split(/[\\/]/).pop() ?? catalog.libraryRoot)
@@ -141,13 +151,9 @@ export function createLibraryViewController(
     untrack(() => gallerySelection.retainCatalogAssets(catalogItems));
   });
   $effect(() => {
-    const key = [
-      ocrSearch.query,
-      ocrSearch.sortMode,
-      ocrSearch.minMatchPercentile,
-      preferences.current.sortField,
-      preferences.current.layoutMode,
-    ].join("\u0000");
+    const key = [ocrSearch.query, catalog.libraryRoot, ocrSearch.visualReferenceRevision].join(
+      "\u0000",
+    );
     if (selectionSearchKey !== undefined && key !== selectionSearchKey) gallerySelection.clear();
     selectionSearchKey = key;
   });
@@ -190,7 +196,7 @@ export function createLibraryViewController(
   }
   function openDetail(index: number): void {
     detailStatus = null;
-    detailIndex = index;
+    detailId = filteredItems[index]?.id ?? null;
   }
   function openFileMenu(index: number): void {
     const item = filteredItems[index];
@@ -218,19 +224,19 @@ export function createLibraryViewController(
     gallerySelection.endMarquee();
   }
   function closeDetail(): void {
-    detailIndex = null;
+    detailId = null;
     detailStatus = null;
   }
   function showPrevDetail(): void {
     if (detailIndex !== null && detailIndex > 0) {
       detailStatus = null;
-      detailIndex -= 1;
+      detailId = filteredItems[detailIndex - 1].id;
     }
   }
   function showNextDetail(): void {
     if (detailIndex !== null && detailIndex < filteredItems.length - 1) {
       detailStatus = null;
-      detailIndex += 1;
+      detailId = filteredItems[detailIndex + 1].id;
     }
   }
   function handleGalleryScroll(state: { scrollTop: number; layout: GalleryLayout }): void {
@@ -336,6 +342,7 @@ export function createLibraryViewController(
     const saved = catalog.libraries.find((library) => rootsMatch(library.root, root));
     const query = saved?.query ?? "";
     const scrollTop = saved?.scrollTop ?? 0;
+    ocrSearch.resetVisualSearch();
     ocrSearch.query = query;
     galleryScroll.prepareRestore(scrollTop);
     preparedLibraryViewRestoreGeneration = generation;

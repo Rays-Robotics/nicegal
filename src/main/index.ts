@@ -22,6 +22,7 @@ import { NicegalServerClient } from "./backend/nicegal-server-client";
 import { NicegalServerProcess, RESTART_EXIT_CODE } from "./backend/nicegal-server-process";
 import { ThumbnailReader } from "./backend/thumbnail-reader";
 import { registerNativeIpc } from "./native/ipc";
+import { startUpdates } from "./updates";
 
 registerMediaSchemes();
 
@@ -41,6 +42,8 @@ let thumbnailReader: ThumbnailReader | null = null;
 let backendClient: NicegalServerClient | null = null;
 let shutdownComplete = false;
 let shutdownStarted = false;
+let backendShutdown: Promise<void> | null = null;
+let updates: ReturnType<typeof startUpdates> | null = null;
 
 function broadcastBackendStatus(): void {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -181,6 +184,7 @@ function focusMainWindow(): void {
  * its execution provider (see `nicegal-server`'s `RESTART_EXIT_CODE` doc comment) — so it gets
  * a quiet respawn instead of a crash report. */
 function handleUnexpectedExit(code: number | null, signal: NodeJS.Signals | null): void {
+  if (shutdownStarted) return;
   if (code === RESTART_EXIT_CODE) {
     void restartAfterProviderFallback();
     return;
@@ -200,8 +204,11 @@ async function restartAfterProviderFallback(): Promise<void> {
   });
   console.info("nicegal-server is restarting to switch execution provider");
   backendStatus.restartReason = "provider-fallback";
-  await shutdownBackend();
   try {
+    await shutdownBackend();
+    // A provider fallback may have been draining the old backend when the user quit.
+    // Do not spawn a replacement while the on-quit updater is about to replace its files.
+    if (shutdownStarted) return;
     await initializeBackend();
   } catch (error) {
     backendStatus.error = formatBackendError(error);
@@ -248,7 +255,17 @@ async function initializeBackend(): Promise<void> {
   broadcastBackendStatus();
 }
 
-async function shutdownBackend(): Promise<void> {
+function shutdownBackend(): Promise<void> {
+  // Provider fallback and app quit can overlap. NicegalServerProcess.stop() detaches its child
+  // immediately, so a second stop alone would resolve before the first process has really exited.
+  // All callers must await the same drain before respawning or letting an installer run.
+  backendShutdown ??= drainBackend().finally(() => {
+    backendShutdown = null;
+  });
+  return backendShutdown;
+}
+
+async function drainBackend(): Promise<void> {
   backendStatus.ready = false;
   broadcastBackendStatus();
   thumbnailReader?.close();
@@ -279,6 +296,7 @@ if (app.requestSingleInstanceLock()) {
       () => thumbnailReader,
     );
     createWindow();
+    updates = startUpdates(isTrustedRenderer);
 
     try {
       await initializeBackend();
@@ -297,10 +315,17 @@ if (app.requestSingleInstanceLock()) {
     event.preventDefault();
     if (shutdownStarted) return;
     shutdownStarted = true;
-    void shutdownBackend().finally(() => {
-      shutdownComplete = true;
-      app.quit();
-    });
+    updates?.stop();
+    void shutdownBackend()
+      .catch((error: unknown) => {
+        // A locked backend binary must never be replaced by the on-quit installer.
+        updates?.deferInstallation();
+        console.error("Backend shutdown failed; deferring any downloaded update", error);
+      })
+      .finally(() => {
+        shutdownComplete = true;
+        app.quit();
+      });
   });
 
   app.on("window-all-closed", () => {

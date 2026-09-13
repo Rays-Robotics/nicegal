@@ -1,4 +1,4 @@
-import { segmentSnippet, type SnippetSegment } from "./snippet-highlight";
+import { segmentFilename, segmentSnippet, type SnippetSegment } from "./snippet-highlight";
 import {
   originalUrlOf,
   thumbnailUrlOf,
@@ -22,7 +22,7 @@ export type PoolTile = GalleryPosition & {
   naturalHeight: number;
   mediaKind: "image" | "video";
   animated: boolean;
-  /** OCR/vector snippet for the active search, looked up while assigning a slot. */
+  /** Filename or OCR/vector snippet for the active search, looked up while assigning a slot. */
   snippet?: string;
   /** Precomputed once at assignment, so caption markup does no per-render text work. */
   snippetSegments?: readonly SnippetSegment[];
@@ -51,6 +51,8 @@ export interface PoolRequest {
   snippetTerms?: readonly string[];
   /** Stable identity of `snippetTerms`, so marks are recomputed only when terms change. */
   snippetTermsKey?: string;
+  /** Filename matching is literal substring matching, not FTS syntax (e.g. "OR" or "a_b"). */
+  filenameQuery?: string;
 }
 
 /**
@@ -69,6 +71,7 @@ export function recyclePool({
   snippets,
   snippetTerms = EMPTY_SNIPPET_TERMS,
   snippetTermsKey = "",
+  filenameQuery = "",
 }: PoolRequest): PoolTile[] {
   if (!layout.positions.length || end <= start) return [];
 
@@ -76,7 +79,7 @@ export function recyclePool({
   const retainedByIndex = new Map<number, PoolTile>();
   const freeSlots: number[] = [];
   let nextSlot = tiles.reduce((highest, tile) => Math.max(highest, tile.slot), -1) + 1;
-  const marksEnabled = snippetTerms.length > 0;
+  const marksEnabled = snippetTerms.length > 0 || filenameQuery.length > 0;
 
   for (const tile of tiles) {
     // Retention is by identity, not just position: when `items` changes under a filter, an index
@@ -115,6 +118,7 @@ export function recyclePool({
     }
     const item = items[index];
     const snippet = snippets?.get(item.id) || undefined;
+    const isFilename = Boolean(filenameQuery && snippet === item.displayName);
     next.push({
       slot: freeSlots.pop() ?? nextSlot++,
       ...position,
@@ -124,7 +128,9 @@ export function recyclePool({
             snippet,
             ...(marksEnabled
               ? {
-                  snippetSegments: segmentSnippet(snippet, snippetTerms),
+                  snippetSegments: isFilename
+                    ? segmentFilename(snippet, filenameQuery)
+                    : segmentSnippet(snippet, snippetTerms),
                   snippetTermsKey,
                 }
               : {}),

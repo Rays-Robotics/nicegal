@@ -55,3 +55,15 @@ export function segmentSnippet(raw: string, terms: readonly string[]): SnippetSe
   }
   return segments;
 }
+
+/** Keep a match near the end of a long filename inside the two-line caption, not clipped away.
+ * The pool retains the full filename separately for alt text and the native tooltip. */
+export function segmentFilename(filename: string, query: string): SnippetSegment[] {
+  const term = query.toLowerCase();
+  const at = filename.toLowerCase().indexOf(term);
+  if (!term || at < 0) return [{ text: filename, hit: false }];
+  const start = Math.max(0, at - 24);
+  const end = Math.min(filename.length, at + term.length + 36);
+  const excerpt = `${start ? "…" : ""}${filename.slice(start, end)}${end < filename.length ? "…" : ""}`;
+  return segmentSnippet(excerpt, [term]);
+}

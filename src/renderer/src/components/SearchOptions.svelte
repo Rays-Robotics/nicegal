@@ -5,10 +5,8 @@
 
       Sort: [Date | Relevance]   Match quality: ▓▓▓▓▓▓░░░░░░   84 matches
 
-  The two controls are deliberately never both live. `Date` sorts the gallery as it always was and
-  offers a percentile cutoff to thin weak semantic-search hits; `Relevance` reorders best-first
-  and cuts by rank instead, so the slider goes away rather than putting two different cutoffs on
-  one row.
+  Relevance groups All results by source. Date combines them into one timeline and exposes the
+  CLIP-only slider. Related text in All has its own fixed cutoff, not controlled by this slider.
 -->
 <script lang="ts">
   import { MATCH_QUALITY_STEP, type SearchSortMode } from "../lib/ocr-search.svelte";
@@ -22,6 +20,10 @@
     shownCount,
     matchTotal,
     truncated,
+    sliderLabel = "Match quality",
+    sections = [],
+    onsection = () => {},
+    notice = "",
   }: {
     sortMode: SearchSortMode;
     minMatchPercentile: number;
@@ -33,6 +35,10 @@
     matchTotal: number;
     /** Whether ranked mode's top-N cutoff dropped anything, which changes what the count means. */
     truncated: boolean;
+    sliderLabel?: string;
+    sections?: readonly { key: string; label: string; count: number; status?: string }[];
+    onsection?: (key: string) => void;
+    notice?: string;
   } = $props();
 
   const sortOptions = [
@@ -60,7 +66,7 @@
 
   {#if showSlider}
     <div class="cutoff" class:disabled={sliderDisabled}>
-      <label class="label" for="min-match">Match quality:</label>
+      <label class="label" for="min-match">{sliderLabel}:</label>
       <div class="trackbar-wrap">
         <div class="ruler" aria-hidden="true">
           {#each ticks as tick (tick.at)}
@@ -80,21 +86,64 @@
           disabled={sliderDisabled}
           title={sliderDisabled
             ? "Every result scored the same, so there is nothing to cut"
-            : "Drag right to keep only the stronger matches"}
+            : sliderLabel === "Visual similarity"
+              ? "Drag right to keep fewer visual results. Names and text results are unchanged."
+              : "Drag right to keep only the stronger matches"}
           bind:value={minMatchPercentile}
         />
       </div>
     </div>
   {/if}
 
+  {#if sections.length}
+    <nav class="search-sections" aria-label="Search result sections">
+      {#each sections as section (section.key)}
+        <button
+          class="section-link"
+          title={section.status || `Jump to ${section.label.toLowerCase()}`}
+          onclick={() => onsection(section.key)}
+          >{section.label} <span>{section.count.toLocaleString()}</span></button
+        >
+      {/each}
+    </nav>
+  {/if}
+
   <span class="count" role="status">{countText}</span>
+  {#if notice}<span class="search-notice" role="status" title={notice}>{notice}</span>{/if}
 </div>
 
 <style>
+  .search-notice {
+    flex-basis: 100%;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .search-sections {
+    display: flex;
+    gap: var(--space-8);
+    flex-wrap: wrap;
+  }
+  .section-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
+  }
+  .section-link:hover {
+    text-decoration: underline;
+  }
+  .section-link span {
+    color: var(--text-secondary);
+  }
   .search-options {
     --segment-height: var(--control-height);
 
     display: flex;
+    flex-wrap: wrap;
     flex: none;
     align-items: center;
     gap: var(--space-8);

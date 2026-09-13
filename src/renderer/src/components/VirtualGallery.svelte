@@ -28,7 +28,6 @@
   import { onMount, tick, untrack } from "svelte";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
-  import type { LayoutOptions } from "../lib/gallery/options";
   import type { SelectionModifiers } from "../lib/gallery/selection.svelte";
   import type { ThumbnailFailure } from "../lib/gallery/thumbnail-scheduler";
 
@@ -36,6 +35,7 @@
   import { buildLayout } from "../lib/gallery/layout";
   import { GalleryMediaLifecycle } from "../lib/gallery/media-lifecycle.svelte";
   import { selectPromotedIds } from "../lib/gallery/media-policy";
+  import { layoutDefaults, type LayoutOptions } from "../lib/gallery/options";
   import { createOverscanController, type OverscanWindow } from "../lib/gallery/overscan";
   import { literalSnippetTerms } from "../lib/gallery/snippet-highlight";
   import { createThumbnailScheduler, type ThumbnailMiss } from "../lib/gallery/thumbnail-scheduler";
@@ -45,10 +45,10 @@
     physicalThumbnailSize,
     type GalleryItem,
     type GalleryLayout,
+    type GallerySection,
   } from "../lib/gallery/types";
   import { firstVisibleIndex, visibleIndexRange } from "../lib/gallery/visible-range";
   import { parseQuery } from "../lib/search-query";
-  import ThumbnailFailures from "./ThumbnailFailures.svelte";
 
   /** Give up on a poster that keeps failing to ensure (corrupt/unreadable source) rather than
    * retrying it forever. */
@@ -56,6 +56,9 @@
 
   let {
     items = [],
+    sections = [],
+    viewKey = "gallery",
+    oninteractionchange = () => {},
     layoutOptions = {},
     imagePoolSize = 300,
     immediateOverscan = 1,
@@ -79,7 +82,7 @@
      * always wins when the OS expresses a preference. Animated media is promoted only for eligible
      * pooled tiles, after scrolling settles, subject to the concurrency and source-size limits. */
     playAnimatedPreviews = true,
-    /** OCR-text snippets for the current search, by item id. A tile with an entry shows an
+    /** Filename/OCR-text snippets for the current search, by item id. A tile with an entry shows an
      * iBooks-style caption strip over its bottom edge so the user can see *why* it matched. */
     snippets,
     /** Raw query text used to highlight matching terms inside the caption. */
@@ -105,6 +108,9 @@
     onclear = () => {},
   }: {
     items?: GalleryItem[];
+    sections?: readonly GallerySection[];
+    viewKey?: string;
+    oninteractionchange?: (active: boolean) => void;
     layoutOptions?: LayoutOptions;
     imagePoolSize?: number;
     immediateOverscan?: number;
@@ -145,10 +151,20 @@
   let scrollTop = $state(0);
   let overscan = $state<OverscanWindow>({ before: 1, after: 1 });
   /** What sits under the top of the viewport, tracked by item id so it survives a relayout. */
-  let anchor = $state<{ id: string; progress: number } | undefined>();
+  type ScrollAnchor =
+    | { kind: "top" }
+    | { kind: "section"; key: string; offset: number }
+    | { kind: "item"; id: string; progress: number };
+  let anchor = $state<ScrollAnchor>();
+  let sectionHeaderHeight = $state(26);
+  let sectionGap = $state(6);
   let previousSearchQuery: string | undefined;
   let restoringAnchor = $state(false);
-  const layout = $derived(buildLayout(items, viewportWidth, layoutOptions));
+  const layout = $derived(
+    buildLayout(items, viewportWidth, layoutOptions, sections, sectionHeaderHeight, sectionGap),
+  );
+  let previousViewKey: string | undefined;
+  const viewOffsets = new SvelteMap<string, { top: number; anchor: typeof anchor }>();
   let tiles = $state<PoolTile[]>([]);
 
   // Animated GIF/video promotion (see lib/gallery/media-policy.ts): which pooled tiles currently
@@ -178,16 +194,17 @@
    * `<img>` re-requests thumb:// and picks up the now-generated row. */
   const localRefresh = new SvelteMap<string, number>();
   const thumbnailFailures = new SvelteMap<string, ThumbnailFailure>();
-  const currentFailures = $derived.by(() => {
+  export function getThumbnailFailures(
+    catalogItems: readonly GalleryItem[],
+  ): (ThumbnailFailure & { name: string })[] {
     if (!thumbnailFailures.size) return [];
-    return items.flatMap((item) => {
+    return catalogItems.flatMap((item) => {
       const failure = thumbnailFailures.get(item.id);
       return failure ? [{ ...failure, name: item.displayName }] : [];
     });
-  });
+  }
 
-  function retryThumbnails(): void {
-    const ids = currentFailures.map((failure) => failure.assetId);
+  export function retryThumbnails(ids: readonly string[]): void {
     thumbnailScheduler.retry(ids);
     for (const id of ids) {
       thumbnailFailures.delete(id);
@@ -329,10 +346,32 @@
     }
     if (searchQuery === previousSearchQuery) return;
     previousSearchQuery = searchQuery;
+    viewOffsets.clear();
     anchor = undefined;
     if (!viewport) return;
     viewport.scrollTop = 0;
     scrollTop = viewport.scrollTop;
+  });
+
+  // Date and Relevance are two readings of the same results, each with its own scroll position.
+  // This is presentation state only: switching never schedules another backend search.
+  $effect(() => {
+    const key = viewKey;
+    untrack(() => {
+      if (previousViewKey === key) return;
+      if (previousViewKey !== undefined)
+        viewOffsets.set(previousViewKey, { top: scrollTop, anchor });
+      const saved = viewOffsets.get(key);
+      const first = previousViewKey === undefined;
+      previousViewKey = key;
+      if (first) return;
+      anchor = saved?.anchor;
+      void tick().then(() => {
+        if (previousViewKey !== key || !viewport) return;
+        viewport.scrollTop = saved?.top ?? 0;
+        scrollTop = viewport.scrollTop;
+      });
+    });
   });
 
   /** Enables thumbnail launches once scrolling has settled and re-ranks queued misses whenever
@@ -393,6 +432,11 @@
     trackAnchor();
   }
 
+  export function scrollToSection(key: string): void {
+    const section = layout.dividers.find((divider) => divider.key === key);
+    if (section) scrollTo(section.y);
+  }
+
   function updatePool(
     currentLayout: GalleryLayout,
     height: number,
@@ -417,11 +461,12 @@
       end,
       poolSize,
       devicePixelRatio: pixelRatio,
-      // The controller only fills this map for OCR/vector results. Suppressing it without literal
-      // text also keeps operator-only input silent instead of leaving a caption on every match.
-      snippets: snippetTerms.length ? snippets : undefined,
+      // Filenames use literal substrings, including punctuation and words like "OR" which
+      // the OCR highlighter treats as operators. Empty searches still have no captions.
+      snippets: snippetTerms.length || filenameQuery ? snippets : undefined,
       snippetTerms,
       snippetTermsKey,
+      filenameQuery,
     });
   }
 
@@ -464,9 +509,15 @@
   /** Literal body terms worth highlighting in a caption. `parseQuery` removes the scope prefix
    * and date tokens before `literalSnippetTerms` (lib/gallery/snippet-highlight.ts) inspects the
    * text and discards FTS control words. */
-  const snippetTerms = $derived(literalSnippetTerms(parseQuery(snippetQuery).body));
+  const parsedSnippetQuery = $derived(parseQuery(snippetQuery));
+  const snippetTerms = $derived(literalSnippetTerms(parsedSnippetQuery.body));
+  const filenameQuery = $derived(
+    parsedSnippetQuery.scope === "ocr" || parsedSnippetQuery.scope === "like"
+      ? ""
+      : parsedSnippetQuery.body.trim(),
+  );
   /** Lets the pool retain a caption's precomputed marks until the actual terms change. */
-  const snippetTermsKey = $derived(snippetTerms.join("\u0000"));
+  const snippetTermsKey = $derived(`${snippetTerms.join("\u0000")}\u0001${filenameQuery}`);
 
   /**
    * Records what is under the top of the viewport on every scroll, by item id rather than index.
@@ -474,14 +525,28 @@
    * already there whatever causes the rebuild — mode switch, a size knob, a resize, or filtering.
    */
   function trackAnchor(): void {
+    // Zero is a position in its own right, not the top of the first thumbnail (which follows
+    // padding and possibly a section header). Preserving an item there used to hide the header.
+    if (scrollTop <= 0.5) {
+      anchor = { kind: "top" };
+      return;
+    }
+    const section = layout.dividers.find(
+      (divider) => divider.key && divider.y <= scrollTop && scrollTop < divider.y + divider.height,
+    );
+    if (section?.key) {
+      anchor = { kind: "section", key: section.key, offset: scrollTop - section.y };
+      return;
+    }
     if (!layout.positions.length) return;
     const index = firstVisibleIndex(layout, scrollTop);
     const position = layout.positions[index];
     const item = items[index];
     if (!position || !item) return;
     anchor = {
+      kind: "item",
       id: item.id,
-      progress: Math.max(0, Math.min(1, (scrollTop - position.y) / position.height)),
+      progress: Math.min(1, (scrollTop - position.y) / position.height),
     };
   }
 
@@ -489,12 +554,18 @@
     const currentAnchor = untrack(() => anchor);
     const currentViewport = untrack(() => viewport);
     if (!currentAnchor || !currentViewport || !currentLayout.positions.length) return;
-    // Rare enough (only on relayout) that a scan beats maintaining an id->index map.
-    const index = items.findIndex((item) => item.id === currentAnchor.id);
-    if (index < 0) return;
-    const position = currentLayout.positions[index];
-    if (!position) return;
-    const nextScrollTop = Math.max(0, position.y + position.height * currentAnchor.progress);
+    let nextScrollTop = 0;
+    if (currentAnchor.kind === "section") {
+      const section = currentLayout.dividers.find((divider) => divider.key === currentAnchor.key);
+      if (!section) return;
+      nextScrollTop = section.y + currentAnchor.offset;
+    } else if (currentAnchor.kind === "item") {
+      // Rare enough (only on relayout) that a scan beats maintaining an id->index map.
+      const index = items.findIndex((item) => item.id === currentAnchor.id);
+      const position = currentLayout.positions[index];
+      if (!position) return;
+      nextScrollTop = Math.max(0, position.y + position.height * currentAnchor.progress);
+    }
 
     // Reactive statements run before Svelte patches the DOM, so the canvas is still the previous
     // layout's height right now. Switching to a taller layout would have scrollTop clamped to the
@@ -542,6 +613,12 @@
   });
 </script>
 
+<svelte:window
+  onpointerup={() => oninteractionchange(false)}
+  onpointercancel={() => oninteractionchange(false)}
+  onblur={() => oninteractionchange(false)}
+/>
+
 <!-- svelte-ignore a11y_no_static_element_interactions -- background-click deselection is a
      mouse-only convenience; the keyboard equivalent is Escape (handled by the caller). -->
 <div
@@ -549,9 +626,18 @@
   bind:this={viewport}
   {@attach input.attach}
   {onscroll}
-  onpointerdown={input.onViewportPointerDown}
+  onpointerdown={(event) => {
+    oninteractionchange(true);
+    input.onViewportPointerDown(event);
+  }}
   onpointerup={input.onViewportPointerUp}
 >
+  <div
+    class="section-metric"
+    aria-hidden="true"
+    bind:clientHeight={sectionHeaderHeight}
+    bind:clientWidth={sectionGap}
+  ></div>
   <div class="gallery-canvas" style:height={`${layout.height}px`}>
     {#each tiles as tile (tile.slot)}
       {@const promoted = promotedIds.has(tile.itemId)}
@@ -562,6 +648,9 @@
           "is-selected": selectedIds.has(tile.itemId),
         }}
         data-gallery-item-id={tile.itemId}
+        title={tile.snippet && tile.snippet !== tile.alt
+          ? `${tile.alt}\n${tile.snippet}`
+          : tile.alt}
         aria-label={thumbnailFailures.has(tile.itemId)
           ? `${tile.alt}: thumbnail unavailable. Open image`
           : tile.alt}
@@ -621,21 +710,59 @@
         {/if}
       </div>
     {/each}
-    {#each visibleDividers as divider (divider.itemIndex)}
+    {#each visibleDividers as divider (divider.key ?? divider.itemIndex)}
       <div
         class="gallery-divider"
+        class:search-section={Boolean(divider.key)}
+        data-search-section={divider.key}
+        title={divider.status}
         style:top={`${divider.y}px`}
         style:height={`${divider.height}px`}
+        style:padding-inline={divider.key
+          ? `${layoutOptions.padding ?? layoutDefaults.padding}px`
+          : undefined}
       >
         {divider.label}
+        {#if divider.count !== undefined}<span class="section-count"
+            >({divider.count.toLocaleString()})</span
+          >{/if}
+        {#if divider.status}<span class="section-status">{divider.status}</span>{/if}
       </div>
     {/each}
   </div>
 </div>
 
-<ThumbnailFailures failures={currentFailures} onretry={retryThumbnails} />
-
 <style>
+  .section-metric {
+    position: absolute;
+    width: var(--search-section-gap);
+    height: var(--search-section-height);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .section-count {
+    margin-left: var(--space-6);
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-normal);
+  }
+  .section-status {
+    margin-left: var(--space-10);
+    font-weight: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gallery-divider.search-section {
+    color: var(--search-section-text);
+    background: var(--surface-0);
+    letter-spacing: normal;
+  }
+  .gallery-divider.search-section::after {
+    height: 1px;
+    background: var(--search-section-rule);
+  }
+
   .thumbnail-failed {
     position: absolute;
     inset: var(--space-4);

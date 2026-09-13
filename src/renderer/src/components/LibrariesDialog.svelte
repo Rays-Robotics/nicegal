@@ -2,6 +2,7 @@
   import { tick } from "svelte";
 
   import type { LibraryRecord, LibraryRowStatus } from "../lib/catalog.svelte";
+  import type { ThumbnailFailure } from "../lib/gallery/thumbnail-scheduler";
 
   import {
     localDateToExclusiveNs,
@@ -9,6 +10,7 @@
     type ThumbnailBackfillOptions,
   } from "../lib/job-params";
   import LibraryIndexing from "./LibraryIndexing.svelte";
+  import ThumbnailFailures from "./ThumbnailFailures.svelte";
 
   let {
     libraries,
@@ -21,6 +23,8 @@
     onselect,
     onthumbnails,
     onremove,
+    thumbnailFailures = [],
+    onretrythumbnails,
   }: {
     libraries: LibraryRecord[];
     selectedRoot: string;
@@ -32,6 +36,8 @@
     onselect: (root: string) => void;
     onthumbnails: (root: string, options: ThumbnailBackfillOptions) => void;
     onremove: (root: string, purge: boolean) => void;
+    thumbnailFailures?: readonly (ThumbnailFailure & { name?: string })[];
+    onretrythumbnails: () => void;
   } = $props();
 
   const bucketOptions = [128, 256, 512, 1024] as const;
@@ -182,6 +188,7 @@
         </div>
       </section>
     </LibraryIndexing>
+    <ThumbnailFailures failures={thumbnailFailures} onretry={onretrythumbnails} />
   {/if}
 
   <div class="list-heading" aria-hidden="true">

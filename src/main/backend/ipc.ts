@@ -31,9 +31,22 @@ interface JobSubscription {
   abort: AbortController;
 }
 
+interface SenderSearches {
+  session: number;
+  closed: boolean;
+  lanes: Map<NonNullable<SearchRequest["searchLane"]> | "legacy", AbortController>;
+}
+
+function abortSearches(searches: SenderSearches | undefined): void {
+  if (!searches) return;
+  for (const abort of searches.lanes.values()) abort.abort();
+  searches.lanes.clear();
+  searches.closed = true;
+}
+
 export function registerBackendIpc(context: BackendIpcContext): void {
   const subscriptions = new Map<string, JobSubscription>();
-  const searchRequests = new Map<number, AbortController>();
+  const searchRequests = new Map<number, SenderSearches>();
   // Senders that already have a one-shot "destroyed" cleanup hook registered — see
   // `ensureSenderTracked`. Prevents accumulating one listener per subscribeJob/search call.
   const trackedSenders = new Set<WebContents>();
@@ -57,7 +70,7 @@ export function registerBackendIpc(context: BackendIpcContext): void {
 
   const removeSender = (sender: WebContents): void => {
     for (const [jobId] of subscriptions) removeSubscription(jobId, sender);
-    searchRequests.get(sender.id)?.abort();
+    abortSearches(searchRequests.get(sender.id));
     searchRequests.delete(sender.id);
   };
 
@@ -129,14 +142,38 @@ export function registerBackendIpc(context: BackendIpcContext): void {
   handleTrustedIpc(IPC_CHANNELS.backend.search, context.isTrustedSender, async (event, value) => {
     const request = validateSearchRequest(value);
     ensureSenderTracked(event.sender);
-    searchRequests.get(event.sender.id)?.abort();
-    const abort = new AbortController();
-    searchRequests.set(event.sender.id, abort);
-    try {
-      return await requireBackend().search(request, abort.signal);
-    } finally {
-      if (searchRequests.get(event.sender.id) === abort) searchRequests.delete(event.sender.id);
+    let searches = searchRequests.get(event.sender.id);
+    if (!searches) {
+      searches = { session: -1, closed: true, lanes: new Map() };
+      searchRequests.set(event.sender.id, searches);
     }
+    const { searchSession, searchLane, ...backendRequest } = request;
+    if (searchSession === undefined) {
+      abortSearches(searches);
+    } else {
+      if (searchSession < searches.session || (searchSession === searches.session && searches.closed)) {
+        throw new DOMException("Search session was superseded", "AbortError");
+      }
+      if (searchSession > searches.session) {
+        abortSearches(searches);
+        searches.session = searchSession;
+        searches.closed = false;
+      }
+    }
+    const lane = searchLane ?? "legacy";
+    searches.lanes.get(lane)?.abort();
+    const abort = new AbortController();
+    searches.lanes.set(lane, abort);
+    try {
+      const response = await requireBackend().search(backendRequest, abort.signal);
+      abort.signal.throwIfAborted();
+      return response;
+    } finally {
+      if (searches.lanes.get(lane) === abort) searches.lanes.delete(lane);
+    }
+  });
+  handleTrustedIpc(IPC_CHANNELS.backend.cancelSearch, context.isTrustedSender, (event) => {
+    abortSearches(searchRequests.get(event.sender.id));
   });
   // Deliberately not cancelled by a later call, unlike search: an in-flight ensure represents
   // real generation work already committed toward SQLite, so aborting it would only throw away
@@ -240,6 +277,15 @@ function validateJobId(value: unknown): string {
 function validateSearchRequest(value: unknown): SearchRequest {
   if (!value || typeof value !== "object") throw new TypeError("Invalid search request");
   const request = value as Partial<SearchRequest>;
+  if (
+    (request.searchSession === undefined) !== (request.searchLane === undefined) ||
+    (request.searchSession !== undefined &&
+      (!Number.isSafeInteger(request.searchSession) || request.searchSession < 0)) ||
+    (request.searchLane !== undefined &&
+      request.searchLane !== "literal" && request.searchLane !== "meaning" && request.searchLane !== "visual")
+  ) {
+    throw new TypeError("Invalid search session or lane");
+  }
   if (
     typeof request.query !== "string" ||
     request.query.length > 10_000 ||

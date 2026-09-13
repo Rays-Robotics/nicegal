@@ -49,6 +49,7 @@
 }
 
 [data-theme="seven-b"] {
+  --search-section-height: 24px;
   --surface-0: #eef0f4;
   --surface-1: #f8f9fb;
   --surface-2: #e1e5eb;
@@ -110,6 +111,12 @@
 }
 
 [data-theme] {
+  --update-ready-text: var(--text-on-accent);
+  --update-ready-background: var(--accent);
+  --update-ready-hover: var(--accent-active);
+  /* Resolve aliases on the themed element, not :root, so each theme supplies its own colors. */
+  --search-section-text: var(--text-primary);
+  --search-section-rule: var(--border);
   font-family: var(--font-ui);
   font-size: var(--font-size-sm);
   line-height: var(--line-height-normal);

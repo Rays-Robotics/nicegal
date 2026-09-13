@@ -153,8 +153,8 @@ jobs:
       - name: Stamp the version
         run: npm pkg set version=${{ needs.version.outputs.version }}
 
-      # Generate Windows update metadata without uploading. The release job owns all assets;
-      # runtime update checks remain disabled until the updater is implemented.
+      # Generate update metadata without uploading. The release job owns all assets so clients
+      # cannot discover a version before both platform builds and attestations are complete.
       - name: Build and package the app
         run: |
           pnpm run build
@@ -178,6 +178,15 @@ jobs:
             }
           }
 
+      - name: Verify Linux update artifacts
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          test -s dist/latest-linux.yml
+          test -s dist/linux-unpacked/resources/app-update.yml
+          test -s 'dist/nicegal-${{ needs.version.outputs.version }}-linux-x64.AppImage'
+          test -s 'dist/nicegal-${{ needs.version.outputs.version }}-linux-x64.deb'
+
       - name: Attest downloads
         if: github.repository == 'centuryofimage/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         id: attest
@@ -188,6 +197,7 @@ jobs:
             dist/*.zip
             dist/*.blockmap
             dist/latest.yml
+            dist/latest-linux.yml
             dist/*.AppImage
             dist/*.deb
 
@@ -208,6 +218,7 @@ jobs:
             dist/*.zip
             dist/*.blockmap
             dist/latest.yml
+            dist/latest-linux.yml
             dist/*.AppImage
             dist/*.deb
             dist/*.intoto.jsonl
@@ -242,4 +253,4 @@ jobs:
             --prerelease \
             --notes-file CHANGELOG \
             dist/*.exe dist/*.zip dist/*.blockmap dist/latest.yml \
-            dist/*.AppImage dist/*.deb dist/*.intoto.jsonl
+            dist/*.AppImage dist/*.deb dist/latest-linux.yml dist/*.intoto.jsonl

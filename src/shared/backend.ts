@@ -50,6 +50,8 @@ export interface AssetMetadata {
     error: string | null;
   };
   ocrState: "indexed" | "stale" | "notIndexed";
+  /** Recognized text for the current file fingerprint, or null until OCR has indexed it. */
+  ocrText: string | null;
   imageIndexed: boolean;
   textState: "notIndexed" | "noText" | "embedded" | "pending";
   decodeFailed: boolean;
@@ -93,6 +95,10 @@ export interface ExternalVisualReference {
 }
 
 export interface SearchRequest {
+  /** IPC-only generation, increasing within this renderer's lifetime. Supply with searchLane. */
+  searchSession?: number;
+  /** Independent requests in one session may run concurrently; each lane is latest-wins. */
+  searchLane?: "literal" | "meaning" | "visual";
   query: string;
   type: "simple" | "match" | "glob" | "vector" | "image";
   root: string;
@@ -375,6 +381,8 @@ export interface BackendBridge {
   getOcrModels(): Promise<OcrModelsResponse>;
   getSearchModels(): Promise<SearchModelsResponse>;
   searchOcr(request: SearchRequest): Promise<SearchResponse>;
+  /** Abort all current searches and close their session. The next session must be newer. */
+  cancelSearch(): Promise<void>;
   getTextEmbeddingCoverage(root: string): Promise<TextEmbeddingCoverage>;
   startJob(request: JobRequest): Promise<JobSnapshot>;
   cancelJob(jobId: string): Promise<JobSnapshot>;
@@ -389,11 +397,12 @@ export interface BackendBridge {
 export interface NativeBridge {
   chooseDirectory(): Promise<string | null>;
   chooseVisualSearchImage(): Promise<ExternalVisualReference | null>;
-  onAddToVisualSearch(listener: (assetIds: string[]) => void): () => void;
+  onAddToVisualSearch(listener: (assetIds: string[], replace: boolean) => void): () => void;
   showFileContextMenu(request: NativeFileMenuRequest): Promise<void>;
 }
 
 export interface NicegalBridge {
+  updates: import("./updates").UpdateBridge;
   backend: BackendBridge;
   native: NativeBridge;
 }

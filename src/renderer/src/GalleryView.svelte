@@ -6,6 +6,8 @@
 
   import type { ExternalVisualReference } from "../../shared/backend";
 
+  import searchMenuGuide from "./assets/guide/search-menu.png";
+  import visualSearchGuide from "./assets/guide/visual-search.png";
   import AppMessage from "./components/AppMessage.svelte";
   import AppShell from "./components/AppShell.svelte";
   import DetailView from "./components/DetailView.svelte";
@@ -23,7 +25,6 @@
   import { useApplication } from "./lib/application.svelte";
   import { originalUrlOf } from "./lib/gallery/types";
   import { createLibraryViewController } from "./lib/library-view.svelte";
-  import { RANKED_RESULT_LIMIT } from "./lib/ocr-search.svelte";
   import { galleryLayoutState, settings } from "./lib/settings.svelte";
 
   const application = useApplication();
@@ -39,6 +40,7 @@
     document.querySelector<HTMLButtonElement>('button[aria-controls="metadata-panel"]')?.focus();
   }
   let gallery = $state<VirtualGallery>();
+  const thumbnailFailures = $derived(gallery?.getThumbnailFailures(catalog.items) ?? []);
   let settingsPage = $state<"gallery" | "search">("gallery");
   let galleryContainer = $state<HTMLDivElement>();
   const view = createLibraryViewController(application, (y) => gallery?.scrollTo(y));
@@ -50,6 +52,7 @@
   );
 
   async function addDroppedVisualFiles(files: File[]): Promise<void> {
+    const session = ocrSearch.visualSessionRevision;
     const limit = 16 * 1024 * 1024;
     const accepted: ExternalVisualReference[] = [];
     for (const file of files.slice(0, 16)) {
@@ -57,14 +60,38 @@
         ocrSearch.error = `${file.name} is larger than the 16 MB visual-search limit.`;
         continue;
       }
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      let bytes: Uint8Array;
+      try {
+        bytes = new Uint8Array(await file.arrayBuffer());
+      } catch (error: unknown) {
+        if (session === ocrSearch.visualSessionRevision) {
+          ocrSearch.error = error instanceof Error ? error.message : String(error);
+        }
+        return;
+      }
+      if (session !== ocrSearch.visualSessionRevision) return;
       let binary = "";
       for (let offset = 0; offset < bytes.length; offset += 0x8000) {
         binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
       }
       accepted.push({ displayName: file.name, bytesBase64: btoa(binary) });
     }
-    if (accepted.length) ocrSearch.addExternalReferences(accepted);
+    if (accepted.length && session === ocrSearch.visualSessionRevision)
+      ocrSearch.addExternalReferences(accepted);
+  }
+
+  async function chooseVisualFile(): Promise<void> {
+    const session = ocrSearch.visualSessionRevision;
+    try {
+      const reference = await window.nicegal.native.chooseVisualSearchImage();
+      if (reference && session === ocrSearch.visualSessionRevision) {
+        ocrSearch.addExternalReferences([reference]);
+      }
+    } catch (error: unknown) {
+      if (session === ocrSearch.visualSessionRevision) {
+        ocrSearch.error = error instanceof Error ? error.message : String(error);
+      }
+    }
   }
 
   onMount(() => {
@@ -120,27 +147,25 @@
     >
       <SearchBar
         bind:value={ocrSearch.query}
-        message={ocrSearch.queryHint || ocrSearch.error}
-        infoNotice={ocrSearch.indexNotice}
+        bind:composerOpen={ocrSearch.composerOpen}
+        message={ocrSearch.queryHint || (ocrSearch.allMode ? "" : ocrSearch.error)}
+        infoNotice={ocrSearch.allMode ? "" : ocrSearch.indexNotice}
         semanticSuggestion={ocrSearch.shouldSuggestSemantic}
         onsemanticsearch={view.switchToMeaningSearch}
         visualReferences={ocrSearch.visualReferences}
         onvisualreferenceschange={(references) => ocrSearch.setVisualReferences(references)}
-        onchoosevisualfile={() =>
-          void window.nicegal.native
-            .chooseVisualSearchImage()
-            .then((reference) => reference && ocrSearch.addExternalReferences([reference]))
-            .catch(
-              (error: unknown) =>
-                (ocrSearch.error = error instanceof Error ? error.message : String(error)),
-            )}
+        onchoosevisualfile={() => void chooseVisualFile()}
+        selectedPhotoCount={view.gallerySelection.count}
         onaddlibraryvisual={() =>
           ocrSearch.addLibraryReferences(
             catalog.items
               .filter((item) => view.gallerySelection.ids.has(item.id))
               .map((item) => ({ id: item.id, displayName: item.displayName })),
           )}
-        ondropvisualfiles={(files) => void addDroppedVisualFiles(files)}
+        ondropvisualfiles={(files) =>
+          void addDroppedVisualFiles(files).catch((error: unknown) => {
+            ocrSearch.error = error instanceof Error ? error.message : String(error);
+          })}
       />
       {#if orchestrator.restartingIndex}
         <span role="status">Switching to CPU…</span>
@@ -192,7 +217,11 @@
         sliderDisabled={ocrSearch.sliderDisabled}
         shownCount={view.filteredItems.length}
         matchTotal={view.searchView.matchTotal}
-        truncated={view.rankedView && view.searchView.matchTotal > RANKED_RESULT_LIMIT}
+        truncated={false}
+        sliderLabel={ocrSearch.sliderLabel}
+        sections={view.searchView.sections}
+        onsection={(key) => gallery?.scrollToSection(key)}
+        notice={ocrSearch.allMode && ocrSearch.sortMode === "date" ? ocrSearch.allNotice : ""}
       />
     {/if}
   {/if}
@@ -205,10 +234,13 @@
         <VirtualGallery
           bind:this={gallery}
           items={view.filteredItems}
+          sections={view.searchView.sections}
+          viewKey={ocrSearch.sortMode}
+          oninteractionchange={(active) => ocrSearch.setInteracting(active)}
           layoutOptions={view.galleryLayoutOptions}
           imagePoolSize={galleryLayoutState.imagePoolSize}
           playAnimatedPreviews={$settings.playAnimatedPreviews}
-          snippets={ocrSearch.snippets}
+          snippets={ocrSearch.displaySnippets}
           snippetQuery={ocrSearch.query}
           searchQuery={ocrSearch.query}
           selectedIds={view.gallerySelection.ids}
@@ -363,28 +395,86 @@
       labelledby="welcome-splash-title"
       describedby="welcome-splash-description"
       onclose={commands.dismissWelcome}
-      --modal-width="400px"
+      --modal-width="640px"
     >
       <div class="welcome-splash">
         <h1 id="welcome-splash-title">Welcome to Nicegal</h1>
         <p id="welcome-splash-description">
-          Keep your picture folders together, then search the words and visual meaning inside them.
+          Browse picture folders and find images by name, text, or appearance.
         </p>
         <ol>
           <li>
-            <strong>Add a library</strong>
-            <span>Choose a folder of pictures to browse.</span>
+            <strong>Add a folder, then enable search</strong>
+            <span
+              >Open <b>Libraries → Add folder</b> to start browsing. Your files stay in their original
+              folders.</span
+            >
+            <span
+              >Choose <b>Enable search</b> in Libraries to index text and images. The first run downloads
+              search models; pictures are processed locally.</span
+            >
           </li>
           <li>
-            <strong>Index it when you are ready</strong>
+            <strong>Choose what to search</strong>
+            <div class="welcome-search-menu">
+              <div>
+                <p>Choose a search type from the menu, or type a prefix:</p>
+                <ul class="search-types">
+                  <li>
+                    <b>Exact text</b> (<code>ocr:</code>) — Find specific words written in images.
+                  </li>
+                  <li>
+                    <b>Related text</b> (<code>meaning:</code>) — Find writing with a similar
+                    meaning, even with different wording.
+                  </li>
+                  <li>
+                    <b>Visual search</b> (<code>like:</code>) — Find images by appearance, concept,
+                    or similarity to another image.
+                  </li>
+                </ul>
+                <p>
+                  <b>All</b> shows names and exact text first, then the strongest related-text
+                  results, then visual results. Results appear as each search finishes.
+                  <b>File name</b> searches names without indexing.
+                </p>
+                <p>
+                  Use <b>Relevance</b> for grouped results, or <b>Date</b> for one timeline. In
+                  All's Date view,
+                  <b>Visual similarity</b> narrows only visual results; names and text results stay.
+                  Add <code>during:2026-06</code> to search within a month in either view.
+                </p>
+              </div>
+              <img
+                src={searchMenuGuide}
+                width="216"
+                height="121"
+                alt="Search scope menu offering names, exact text, related text, and visual similarity"
+              />
+            </div>
+          </li>
+          <li>
+            <strong>Combine images and descriptions with <code>like:</code></strong>
             <span
-              >Indexing downloads search models on first use, then enables text and visual searches.
-              Follow progress in the toolbar and check Search models in Settings.</span
+              >Right-click a photo and choose <b>Find similar images</b> to start a new search, or
+              <b>Add to visual search</b> to build on the current search.</span
             >
+            <figure>
+              <img
+                src={visualSearchGuide}
+                width="508"
+                height="71"
+                alt="Visual search composer with sunset weighted 2.00 and crowds weighted −1.00"
+              />
+              <figcaption>
+                Open <b>Compose visual search</b> to add descriptions or images and adjust their weights.
+              </figcaption>
+            </figure>
+            <span>Search updates as you edit.</span>
           </li>
         </ol>
         <div class="welcome-splash-actions">
-          <button type="button" onclick={commands.dismissWelcome}>Not now</button>
+          <span>Reopen this guide from <b>Settings → Getting started</b>.</span>
+          <button type="button" onclick={commands.dismissWelcome}>Close</button>
           <button class="primary" type="button" onclick={view.startWelcomeLibraryPicker}
             >Add a folder</button
           >
@@ -406,12 +496,23 @@
         onselect={view.selectLibrary}
         onthumbnails={commands.startThumbnailBackfill}
         onremove={view.removeLibrary}
+        {thumbnailFailures}
+        onretrythumbnails={() =>
+          gallery?.retryThumbnails(thumbnailFailures.map((failure) => failure.assetId))}
       />
     </Modal>
   {:else if view.activeDialog === "settings"}
     <Modal labelledby="settings-title" onclose={view.closeDialog}>
       <div class="settings-dialog">
-        <SettingsPanel {runtime} bind:page={settingsPage} onclose={view.closeDialog} />
+        <SettingsPanel
+          {runtime}
+          bind:page={settingsPage}
+          onclose={view.closeDialog}
+          onshowintro={() => {
+            view.closeDialog();
+            commands.showWelcome();
+          }}
+        />
       </div>
     </Modal>
   {/if}
@@ -471,7 +572,10 @@
     box-shadow: var(--shadow-overlay);
   }
   .welcome-splash {
-    width: min(400px, 100%);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - var(--space-16) * 2);
+    width: 100%;
     box-sizing: border-box;
     padding: var(--space-16);
     border: 1px solid var(--border-strong);
@@ -493,13 +597,16 @@
   }
   .welcome-splash ol {
     display: grid;
-    gap: var(--space-8);
+    gap: var(--space-14);
+    min-height: 0;
+    overflow: auto;
+    padding-right: var(--space-4);
     margin: 0;
     padding: 0;
     list-style: none;
     counter-reset: welcome-step;
   }
-  .welcome-splash li {
+  .welcome-splash ol > li {
     display: grid;
     grid-template-columns: 20px 1fr;
     column-gap: var(--space-7);
@@ -507,7 +614,7 @@
     font-size: var(--font-size-md);
     counter-increment: welcome-step;
   }
-  .welcome-splash li::before {
+  .welcome-splash ol > li::before {
     display: grid;
     width: 18px;
     height: 18px;
@@ -518,16 +625,86 @@
     content: counter(welcome-step);
     font-size: var(--font-size-sm);
   }
-  .welcome-splash li strong,
-  .welcome-splash li span {
+  .welcome-splash ol > li > strong,
+  .welcome-splash ol > li > span {
     grid-column: 2;
   }
-  .welcome-splash li strong {
+  .welcome-splash ol > li > strong {
     color: var(--text-primary);
     font-weight: var(--font-weight-semibold);
   }
-  .welcome-splash li span {
-    margin-top: var(--space-1);
+  .welcome-splash ol > li > span {
+    margin-top: var(--space-4);
+  }
+  .welcome-splash li {
+    line-height: var(--line-height-normal);
+  }
+  .welcome-splash h1,
+  .welcome-splash > p,
+  .welcome-splash-actions {
+    flex: none;
+  }
+  .welcome-search-menu {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-12);
+    grid-column: 2;
+    margin-top: var(--space-6);
+  }
+  .welcome-search-menu p {
+    margin: 0;
+  }
+  .welcome-search-menu > div {
+    flex: 1;
+  }
+  .search-types {
+    margin: var(--space-6) 0;
+    padding-left: var(--space-16);
+    list-style: disc;
+  }
+  .search-types li + li {
+    margin-top: var(--space-4);
+  }
+  .welcome-splash img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+  .welcome-search-menu img {
+    width: 216px;
+    flex: none;
+  }
+  .welcome-splash figure {
+    grid-column: 2;
+    margin: var(--space-8) 0 var(--space-4);
+  }
+  .welcome-splash figcaption {
+    margin-top: var(--space-6);
+  }
+  .welcome-splash code {
+    color: var(--text-primary);
+    font-size: inherit;
+  }
+  .welcome-splash b {
+    font-weight: var(--font-weight-semibold);
+  }
+  .welcome-splash-actions > span {
+    margin-right: auto;
+    align-self: center;
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+  }
+  @media (max-width: 560px) {
+    .welcome-search-menu {
+      flex-direction: column;
+    }
+    .welcome-splash-actions {
+      flex-wrap: wrap;
+    }
+    .welcome-splash-actions > span {
+      width: 100%;
+    }
   }
   .welcome-splash-actions {
     display: flex;

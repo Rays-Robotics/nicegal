@@ -1,1 +1,3 @@
-Updated Nicegal’s repository and release workflow references to centuryofimage/nicegal and advanced the nicegal-server submodule.
+- Fixed compose search behavior
+- Revamped "all" search
+- Added auto updater

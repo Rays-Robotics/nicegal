@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+
   import type { ExecutionProviderId } from "../../../shared/backend";
+  import type { UpdatePreferences } from "../../../shared/updates";
   import type { RuntimeController } from "../lib/runtime.svelte";
 
   import { useApplication } from "../lib/application.svelte";
@@ -10,10 +13,12 @@
   let {
     runtime,
     onclose,
+    onshowintro,
     page = $bindable<"gallery" | "search">("gallery"),
   }: {
     runtime: RuntimeController;
     onclose: () => void;
+    onshowintro: () => void;
     page?: "gallery" | "search";
   } = $props();
 
@@ -22,6 +27,39 @@
     { id: "seven-b", label: "nice" },
   ];
   const { catalog } = useApplication().services;
+  let updatePreferences = $state<UpdatePreferences | null>(null);
+  let updateSaving = $state(false);
+  let updateError = $state<string | null>(null);
+  onMount(() => {
+    let disposed = false;
+    void window.nicegal.updates
+      .getPreferences()
+      .then((value) => {
+        if (!disposed) updatePreferences = value;
+      })
+      .catch((error: unknown) => {
+        if (!disposed) updateError = error instanceof Error ? error.message : String(error);
+      });
+    return () => {
+      disposed = true;
+    };
+  });
+
+  async function setAutomaticUpdates(
+    event: Event & { currentTarget: HTMLInputElement },
+  ): Promise<void> {
+    const checkbox = event.currentTarget;
+    updateSaving = true;
+    updateError = null;
+    try {
+      updatePreferences = await window.nicegal.updates.setEnabled(checkbox.checked);
+    } catch (error) {
+      updateError = error instanceof Error ? error.message : String(error);
+    } finally {
+      checkbox.checked = updatePreferences?.enabled ?? false;
+      updateSaving = false;
+    }
+  }
 
   const executionProviders: { id: ExecutionProviderId; label: string }[] = [
     { id: "directml", label: "DirectML" },
@@ -73,7 +111,7 @@
           </div>
         </div>
         <label class="row"
-          ><span>Play animated GIFs/videos in the grid</span><input
+          ><span>Play animated GIFs in the grid</span><input
             type="checkbox"
             bind:checked={$settings.playAnimatedPreviews}
           /></label
@@ -125,6 +163,27 @@
           /></label
         >
       </section>
+      <section class="settings-group" aria-labelledby="updates-title">
+        <h2 id="updates-title">Updates</h2>
+        <label class="row">
+          <span class="setting-label"
+            >Automatic updates<small
+              >Checks once per launch. Disabling stops downloads and installation on quit. Enabling
+              takes effect next launch.</small
+            ></span
+          >
+          <input
+            type="checkbox"
+            checked={updatePreferences?.enabled ?? false}
+            disabled={!updatePreferences || updateSaving}
+            onchange={setAutomaticUpdates}
+          />
+        </label>
+        {#if updatePreferences && !updatePreferences.supported}
+          <p class="update-build-note">This build uses manual updates.</p>
+        {/if}
+        {#if updateError}<p class="settings-error" role="alert">{updateError}</p>{/if}
+      </section>
     {:else}
       <SearchModels />
       <details class="settings-group advanced-settings" open={Boolean(runtime.error)}>
@@ -167,9 +226,18 @@
       </details>
     {/if}
   </div>
+  <footer class="settings-help">
+    <span>New to Nicegal?</span>
+    <button class="ui-button" onclick={onshowintro}>Getting started</button>
+  </footer>
 </section>
 
 <style>
+  .update-build-note {
+    padding: 0 var(--space-9) var(--space-7);
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+  }
   .settings-panel {
     display: flex;
     width: 100%;
@@ -184,6 +252,18 @@
     flex: none;
     gap: var(--space-4);
     padding-top: var(--space-10);
+  }
+  .settings-help {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-8);
+    margin-top: var(--space-12);
+    padding-top: var(--space-10);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: var(--font-size-md);
   }
   .settings-pages button[aria-pressed="true"] {
     background: var(--btn-face-active);

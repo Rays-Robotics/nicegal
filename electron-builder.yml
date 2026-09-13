@@ -22,11 +22,11 @@ win:
     - nsis
     - zip
     - portable
-  # Future updater's public download address, not a trigger for builds or uploads.
+  # Updater's public download address, not a trigger for builds or uploads.
   # Builds use --publish never; only the public repository's CI uploads release assets.
   publish:
     provider: github
-    owner: nicegal
+    owner: centuryofimage
     repo: nicegal
     releaseType: prerelease
   extraResources:
@@ -49,6 +49,7 @@ portable:
   unpackDirName: nicegal
 
 nsis:
+  include: build/installer.nsh
   artifactName: ${name}-${version}-windows-${arch}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
@@ -68,12 +69,25 @@ mac:
 dmg:
   artifactName: ${name}-${version}-macos-${arch}.${ext}
 linux:
+  publish:
+    provider: github
+    owner: centuryofimage
+    repo: nicegal
+    releaseType: prerelease
+  # Electron derives its Linux app_id/WM_CLASS from package.json's desktopName.
+  # Keep the installed .desktop basename synchronized so desktop shells associate windows correctly.
+  syncDesktopName: true
   target:
     - AppImage
     - deb
   artifactName: ${name}-${version}-linux-${arch}.${ext}
   maintainer: nicegal
   category: Utility
+  desktop:
+    entry:
+      GenericName: Image Gallery
+      Keywords: gallery;images;photos;search;OCR;
+      StartupNotify: "true"
   extraResources:
     - from: LICENSE
       to: licenses/LICENSE

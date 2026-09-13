@@ -1,13 +1,18 @@
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
-import type { Timeline } from "../../../shared/backend";
+import type { Timeline, SearchResponse } from "../../../shared/backend";
 import type { ExternalVisualReference } from "../../../shared/backend";
 import type { CatalogController } from "./catalog.svelte";
+import type { GallerySection } from "./gallery/types";
 
 import { searchErrorMessage } from "./errors";
 import { localDateToExclusiveNs, localDateToNs } from "./job-params";
-import { parseQuery, type DateFilter, type SearchScope } from "./search-query";
-import { isVisualComposition, parseVisualTextTerms, type VisualReferenceTerm } from "./visual-query";
+import { parseQuery, withScope, type DateFilter, type SearchScope } from "./search-query";
+import {
+  isVisualComposition,
+  parseVisualTextTerms,
+  type VisualReferenceTerm,
+} from "./visual-query";
 
 type CatalogItem = CatalogController["items"][number];
 
@@ -28,25 +33,25 @@ export type SearchSortMode = "relevance" | "date";
  */
 const SEARCH_DEBOUNCE_MS = 80;
 
-/**
- * Ranked mode's cutoff. Vector search matches nearly everything weakly, so without a cutoff the
- * "best match first" view degenerates into the whole library in near-arbitrary tail order.
- */
-export const RANKED_RESULT_LIMIT = 500;
+/** Backend API ceiling, not a relevance threshold. Report overflow rather than silently hiding
+ * the tail. Relevance no longer has the frontend-only 500-result cutoff (2026-09-13). */
+const SEARCH_RESULT_LIMIT = 250_000;
+/** All's related-text section keeps the strongest 5%. User follow-up 2026-09-13
+ * supersedes unfiltered text embeddings in All; the All slider still controls CLIP only. */
+export const ALL_RELATED_MATCH_QUALITY = 95;
+let nextSearchSession = Date.now();
 
 /**
- * Slider stops for the match-quality cutoff. Ten steps put a tick on every stop and land a major
- * one exactly in the middle, which is where the control starts.
+ * Five-point stops include the 95 related-text default. A step of ten makes the browser round
+ * that default to 100, misrepresenting the actual filter (and changing it on first interaction).
  */
-export const MATCH_QUALITY_STEP = 10;
+export const MATCH_QUALITY_STEP = 5;
 
 /**
- * Where the match-quality slider rests. Mid-scale rather than wide open (user, 2026-08-25,
- * overriding the spec's 0): a meaning search matches nearly everything weakly, so "everything it
- * found" is the wrong first thing to show. Half the result set is a usable starting view that the
- * user widens or narrows from.
+ * Related-text default. User review 2026-09-13 raises the previous midpoint to 95, matching
+ * All's fixed related-text filter. In meaning: the user can still broaden it in Date view.
  */
-export const DEFAULT_MATCH_QUALITY = 50;
+export const DEFAULT_MATCH_QUALITY = 95;
 
 /**
  * CLIP ranks every indexed image, including weakly related ones. Its logarithmic cutoff maps the
@@ -61,7 +66,9 @@ export const DEFAULT_CLIP_MATCH_QUALITY = 50;
  */
 export interface SearchView {
   items: CatalogItem[];
-  /** Matching items before ranked mode's top-N cutoff. Equals `items.length` when nothing was cut. */
+  sections?: GallerySection[];
+  sources?: ReadonlyMap<string, string>;
+  /** Distinct displayed results after the mode's explicit filtering rules. */
   matchTotal: number;
   /**
    * Whether the gallery is showing a search result rather than the whole library. True for any
@@ -71,8 +78,82 @@ export interface SearchView {
 }
 
 export class OcrSearchController {
-  query = $state("");
-  pending = $state(false);
+  private queryValue = $state("");
+  composerOpen = $state(false);
+  /** Invalidates file reads/pickers when the user clears or leaves the visual search. */
+  visualSessionRevision = 0;
+
+  get query(): string {
+    return this.queryValue;
+  }
+
+  set query(value: string) {
+    if (parseQuery(value).scope !== "like") this.resetVisualSearch();
+    this.queryValue = value;
+  }
+
+  resetVisualSearch(): void {
+    this.composerOpen = false;
+    this.visualSessionRevision += 1;
+    if (this.visualReferences.length) this.setVisualReferences([]);
+  }
+  private literalPending = $state(false);
+  private broadPending = $state({ meaning: false, visual: false });
+  // Responses are immutable snapshots. Avoid proxying hundreds of thousands of hit objects.
+  private broadResults = $state.raw<Record<"meaning" | "visual", SearchResponse>>({
+    meaning: { results: [], total: 0 },
+    visual: { results: [], total: 0 },
+  });
+  private broadErrors = $state({ meaning: "", visual: "" });
+  private broadTimer: ReturnType<typeof setTimeout> | undefined;
+  private interacting = false;
+  private deferredResults: Array<() => void> = [];
+  private interactionRelease: ReturnType<typeof setTimeout> | undefined;
+
+  /** A completed lane must not recycle a tile between pointerdown and click, or during marquee
+   * selection. Release after the click has dispatched; queued commits recheck the session. */
+  setInteracting(active: boolean): void {
+    if (this.interactionRelease) clearTimeout(this.interactionRelease);
+    if (active) {
+      this.interacting = true;
+      return;
+    }
+    this.interactionRelease = setTimeout(() => {
+      this.interacting = false;
+      const results = this.deferredResults;
+      this.deferredResults = [];
+      for (const publish of results) publish();
+    }, 0);
+  }
+
+  private publish(generation: number, update: () => void): void {
+    const commit = (): void => {
+      if (generation === this.generation) update();
+    };
+    if (this.interacting) this.deferredResults.push(commit);
+    else commit();
+  }
+  get pending(): boolean {
+    return this.literalPending || this.broadPending.meaning || this.broadPending.visual;
+  }
+  set pending(value: boolean) {
+    this.literalPending = value;
+  }
+  get allMode(): boolean {
+    return this.parsed.scope === "all" && Boolean(this.searchBody);
+  }
+  get sliderLabel(): string {
+    return this.parsed.scope === "meaning" ? "Match quality" : "Visual similarity";
+  }
+  get allNotice(): string {
+    return [
+      this.error || this.indexNotice ? `Names and text: ${this.error || this.indexNotice}` : "",
+      this.broadErrors.meaning ? `Related text: ${this.broadErrors.meaning}` : "",
+      this.broadErrors.visual ? `Visual results: ${this.broadErrors.visual}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
   error = $state("");
   indexNotice = $state("");
   /** Set only after the current query's coverage check confirms a semantic search can run. */
@@ -81,6 +162,22 @@ export class OcrSearchController {
   /** Indexed-search result IDs only; filename matches are tracked separately. */
   matches = $state<SvelteSet<string> | null>(null);
   snippets = $state(new SvelteMap<string, string>());
+  private filenameSnippets = $state(new SvelteMap<string, string>());
+  /** Use the same filename/excerpt tooltip and caption pipeline in every view. All also needs
+   * excerpts from its admitted related-text lane. Literal OCR takes precedence when both match. */
+  readonly displaySnippets = $derived.by(() => {
+    const snippets = new SvelteMap<string, string>();
+    if (this.allMode) {
+      const related = this.broadResults.meaning.results;
+      const count = Math.ceil((related.length * (100 - ALL_RELATED_MATCH_QUALITY)) / 100);
+      for (const hit of related.slice(0, count)) snippets.set(hit.assetId, hit.snippet);
+    }
+    // Prefer the literal filename explanation over a related-text excerpt, but retain an OCR
+    // excerpt when both filename and OCR matched. Build filenames in the existing debounced scan.
+    for (const [id, name] of this.filenameSnippets) snippets.set(id, name);
+    for (const [id, text] of this.snippets) if (text.trim()) snippets.set(id, text);
+    return snippets;
+  });
   /**
    * Result IDs in the backend's own rank order — already reranked server-side, so this array is
    * the relevance ordering, not something to re-sort. Empty until a rankable search lands.
@@ -117,17 +214,24 @@ export class OcrSearchController {
 
   /** 0-100 cutoff control value; it is a percentile for text meaning and logarithmic for CLIP. */
   get minMatchPercentile(): number {
-    return this.parsed.scope === "like" ? this.clipMatchQuality : this.meaningMinMatchPercentile;
+    return this.parsed.scope !== "meaning" ? this.clipMatchQuality : this.meaningMinMatchPercentile;
   }
 
   set minMatchPercentile(value: number) {
-    if (this.parsed.scope === "like") this.clipMatchQuality = value;
+    if (this.parsed.scope !== "meaning") this.clipMatchQuality = value;
     else this.meaningMinMatchPercentile = value;
   }
 
   /** Whether the search options strip has anything to offer for the current query. */
   get rankable(): boolean {
-    return Boolean(this.searchBody || this.visualReferences.length) && isRankableScope(this.parsed.scope);
+    return (
+      Boolean(this.searchBody || this.activeVisualReferences.length) &&
+      isRankableScope(this.parsed.scope)
+    );
+  }
+
+  private get activeVisualReferences(): VisualReferenceTerm[] {
+    return this.parsed.scope === "like" ? this.visualReferences : [];
   }
 
   setVisualReferences(references: VisualReferenceTerm[]): void {
@@ -135,22 +239,37 @@ export class OcrSearchController {
     this.visualReferenceRevision += 1;
   }
 
-  addLibraryReferences(items: ReadonlyArray<{ id: string; displayName: string }>): void {
+  addLibraryReferences(
+    items: ReadonlyArray<{ id: string; displayName: string }>,
+    replace = false,
+  ): void {
+    if (!items.length) return;
+    if (replace) {
+      this.resetVisualSearch();
+      this.query = "like:";
+    } else {
+      this.query = withScope(this.query, "like");
+    }
     const known = new SvelteSet(this.visualReferences.map((reference) => reference.id));
     this.setVisualReferences([
       ...this.visualReferences,
-      ...items.filter((item) => !known.has(`library-${item.id}`)).map((item) => ({
-        id: `library-${item.id}`,
-        source: "library" as const,
-        assetId: item.id,
-        displayName: item.displayName,
-        polarity: "more" as const,
-        strength: 1,
-      })),
+      ...items
+        .filter((item) => !known.has(`library-${item.id}`))
+        .map((item) => ({
+          id: `library-${item.id}`,
+          source: "library" as const,
+          assetId: item.id,
+          displayName: item.displayName,
+          polarity: "more" as const,
+          strength: 1,
+        })),
     ]);
+    this.composerOpen = true;
   }
 
   addExternalReferences(items: readonly ExternalVisualReference[]): void {
+    if (!items.length) return;
+    this.query = withScope(this.query, "like");
     this.setVisualReferences([
       ...this.visualReferences,
       ...items.map((item, index) => ({
@@ -162,16 +281,19 @@ export class OcrSearchController {
         strength: 1,
       })),
     ]);
+    this.composerOpen = true;
   }
 
-  /** Whether the minimum-match slider applies: percentiles need a continuous score, and ranked
-   * mode already cuts by rank. */
+  /** Relevance keeps the visual ranking intact; Date exposes the similarity cutoff. All's
+   * separate fixed related-text filter is applied in both views and never shares this slider. */
   get sliderApplicable(): boolean {
     return (
-      (this.parsed.scope === "meaning" || this.parsed.scope === "like") &&
+      (this.parsed.scope === "all" ||
+        this.parsed.scope === "meaning" ||
+        this.parsed.scope === "like") &&
       this.sortMode === "date" &&
-      Boolean(this.searchBody || this.visualReferences.length) &&
-      !this.indexNotice
+      Boolean(this.searchBody || this.activeVisualReferences.length) &&
+      (this.allMode || !this.indexNotice)
     );
   }
 
@@ -183,6 +305,10 @@ export class OcrSearchController {
    * every pass.
    */
   readonly sliderDisabled = $derived.by(() => {
+    if (this.allMode) {
+      const hits = this.broadResults.visual.results;
+      return hits.length < 2 || hits.every((hit) => hit.distance === hits[0].distance);
+    }
     const ids = this.rankedIds;
     if (ids.length < 2) return true;
     const first = this.scores.get(ids[0]);
@@ -213,11 +339,17 @@ export class OcrSearchController {
   get pendingLabel(): string {
     switch (this.parsed.scope) {
       case "all":
-        return "Searching…";
+        return this.literalPending
+          ? "Searching names and text…"
+          : this.broadPending.meaning && this.broadPending.visual
+            ? "Searching related text and images…"
+            : this.broadPending.meaning
+              ? "Searching related text…"
+              : "Searching images…";
       case "ocr":
         return "Searching text…";
       case "meaning":
-        return "Searching by meaning…";
+        return "Searching related text…";
       case "like":
         return "Searching images…";
       default:
@@ -231,18 +363,18 @@ export class OcrSearchController {
 
   /** Offer the semantic engine only after the literal default search has a settled result. */
   get shouldSuggestSemantic(): boolean {
-    return (
-      this.parsed.scope === "all" &&
-      Boolean(this.searchBody) &&
-      !this.pending &&
-      !this.error &&
-      !this.indexNotice &&
-      this.semanticAvailable
-    );
+    return false; // All now searches related text itself.
   }
 
   schedule(root: string, items: CatalogItem[], timeline: Timeline): void {
     if (this.timer) clearTimeout(this.timer);
+    if (this.broadTimer) clearTimeout(this.broadTimer);
+    void window.nicegal.backend.cancelSearch?.().catch(() => {});
+    const searchSession = ++nextSearchSession;
+    this.deferredResults = [];
+    this.broadPending = { meaning: false, visual: false };
+    this.broadResults = { meaning: { results: [], total: 0 }, visual: { results: [], total: 0 } };
+    this.broadErrors = { meaning: "", visual: "" };
     // Sort mode and the percentile cutoff describe one library's result set, so they reset with
     // the library and survive edits to the query within it.
     if (root !== this.lastRoot) {
@@ -254,15 +386,19 @@ export class OcrSearchController {
     const generation = ++this.generation;
     const { scope, body: rawBody, dates, ocrMode } = parseQuery(this.query);
     const body = normalizeSearchBody(scope, rawBody);
-    const references = this.visualReferences;
+    const references = scope === "like" ? this.visualReferences : [];
     const composedVisual = scope === "like" && (isVisualComposition(body) || references.length > 0);
+    const visualTerms = composedVisual ? parseVisualTextTerms(body) : [];
     this.error = "";
     this.indexNotice = "";
     this.semanticAvailable = false;
     this.pending = false;
     this.snippets = new SvelteMap<string, string>();
+    this.filenameSnippets = new SvelteMap<string, string>();
     this.rankedIds = [];
     this.scores = new SvelteMap<string, number>();
+    this.filenameMatches = new SvelteSet<string>();
+    this.matches = new SvelteSet<string>();
 
     if (!body && !references.length) {
       this.filenameMatches = null;
@@ -271,135 +407,194 @@ export class OcrSearchController {
       return;
     }
 
-    // Filename matching is a synchronous full-library scan (`filenameMatchIds`), so it rides the
+    // Filename matching is a synchronous full-library scan (`filenameMatchSnippets`), so it rides the
     // same debounce as the backend request instead of running on every keystroke.
     this.pending = true;
-    this.timer = setTimeout(() => {
-      this.filenameMatches =
-        scope === "ocr" || scope === "like" ? null : new SvelteSet(filenameMatchIds(items, body));
-      this.matches = scope === "name" ? null : new SvelteSet<string>();
-      this.total = scope === "name" ? this.filenameMatches.size : 0;
-
-      if (scope === "name") {
-        this.pending = false;
-        return;
-      }
-
-      const time = timeRangeForDates(dates);
-      if (time === null) {
-        this.matches = new SvelteSet<string>();
-        this.total = 0;
-        this.pending = false;
-        return;
-      }
-
-      if (!root) {
-        this.error = "No library selected.";
-        this.pending = false;
-        return;
-      }
-
-      // `all` searches text the same way `ocr` does — literal OCR matching, not embeddings.
-      // `meaning` searches OCR-text vectors; `like` embeds this text with CLIP and searches
-      // indexed images. Image-to-image CLIP queries deliberately remain outside this text grammar.
-      const searchType =
-        scope === "meaning"
-          ? "vector"
-          : scope === "like"
-            ? "image"
-            : ocrMode === "glob"
-              ? "glob"
-              : "match";
-      // `terms` and `raw` share the `match` mode, so a `terms` body must be quoted on the way
-      // out — unquoted, FTS5 would parse `12:30` as a column filter and reject it.
-      const searchQuery =
-        searchType === "match" && ocrMode === "terms" ? quoteFtsTerms(body) : body;
-      const runSearch = (): void => {
-        const visualTerms = composedVisual ? parseVisualTextTerms(body) : [];
-        const visualComponents = [
-          ...visualTerms.map((term) => ({
-            text: term.text,
-            weight: term.polarity === "more" ? term.strength : -term.strength,
-          })),
-          ...references.map((reference) => {
-            const weight = reference.polarity === "more" ? reference.strength : -reference.strength;
-            if (reference.source === "library") return { assetId: Number(reference.assetId), weight };
-            return { externalImage: { bytesBase64: reference.bytesBase64 ?? "" }, weight };
-          }),
-        ];
-        void window.nicegal.backend
-          .searchOcr({
-            query: composedVisual ? "" : searchQuery,
-            type: searchType,
-            root,
-            limit: 100_000,
-            timeline,
-            ...time,
-            ...(composedVisual
-              ? {
-                  imageQuery: {
-                    components: visualComponents,
-                  },
-                }
-              : {}),
-          })
-          .then((response) => {
-            if (generation !== this.generation) return;
-            this.matches = new SvelteSet(response.results.map((result) => result.assetId));
-            this.snippets = new SvelteMap(
-              response.results.map((result) => [result.assetId, result.snippet] as const),
-            );
-            // The response is already in the backend's final rank order (reranked server-side),
-            // so relevance order is response order — nothing to re-sort. A server without `rank`
-            // simply leaves that order as the only signal, which is the graceful degradation.
-            this.rankedIds = response.results.map((result) => result.assetId);
-            this.scores = new SvelteMap(
-              response.results.flatMap((result) => {
-                const score = result.distance ?? result.score;
-                return score === undefined ? [] : [[result.assetId, score] as const];
+    const time = timeRangeForDates(dates);
+    // Fast literal results need not wait for either embedder. Each lane owns its completion and
+    // error state; one failed or unavailable engine must never discard successful sibling results.
+    // The shared session cancels obsolete work; the renderer generation also guards late replies.
+    if (scope === "all" && root && time !== null) {
+      this.broadPending = { meaning: true, visual: true };
+      this.broadTimer = setTimeout(() => {
+        for (const lane of ["meaning", "visual"] as const) {
+          void window.nicegal.backend
+            .searchOcr({
+              query: body,
+              root,
+              timeline,
+              ...time,
+              type: lane === "meaning" ? "vector" : "image",
+              limit: SEARCH_RESULT_LIMIT,
+              searchSession,
+              searchLane: lane,
+            })
+            .then((response) =>
+              this.publish(generation, () => {
+                if (generation !== this.generation) return;
+                this.broadResults = { ...this.broadResults, [lane]: response };
+                if (response.total > response.results.length)
+                  this.broadErrors[lane] = "Result limit reached; narrow the search by date.";
+              }),
+            )
+            .catch((error: unknown) =>
+              this.publish(generation, () => {
+                if (generation === this.generation)
+                  this.broadErrors[lane] = searchErrorMessage(error);
+              }),
+            )
+            .finally(() =>
+              this.publish(generation, () => {
+                if (generation === this.generation) this.broadPending[lane] = false;
               }),
             );
-            this.total = response.total;
-          })
-          .catch((error: unknown) => {
-            if (generation === this.generation) this.error = searchErrorMessage(error);
-          })
-          .finally(() => {
-            if (generation === this.generation) this.pending = false;
-          });
-      };
+        }
+      }, 400);
+    }
+    this.timer = setTimeout(
+      () => {
+        this.filenameSnippets =
+          scope === "ocr" || scope === "like"
+            ? new SvelteMap<string, string>()
+            : filenameMatchSnippets(items, body);
+        this.filenameMatches =
+          scope === "ocr" || scope === "like" ? null : new SvelteSet(this.filenameSnippets.keys());
+        this.matches = scope === "name" ? null : new SvelteSet<string>();
+        this.total = scope === "name" ? this.filenameMatches.size : 0;
 
-      // The documented embedding-coverage endpoint reports OCR-text vectors only. CLIP image
-      // coverage has no equivalent yet, so run the text-to-image search and let its empty result
-      // mean exactly that — not a guessed “not indexed” state.
-      if (scope === "like") {
-        runSearch();
-        return;
-      }
+        if (scope === "name") {
+          this.pending = false;
+          return;
+        }
 
-      const coverageRequest = window.nicegal.backend.getTextEmbeddingCoverage(root);
+        const time = timeRangeForDates(dates);
+        if (time === null) {
+          this.matches = new SvelteSet<string>();
+          this.total = 0;
+          this.pending = false;
+          return;
+        }
 
-      // `meaning` needs embeddings; `ocr` and `all` only need OCR text, so they gate on
-      // `indexed` instead — an un-embedded-but-OCR'd library should still search fine.
-      void coverageRequest
-        .then((response) => {
-          if (generation !== this.generation) return;
-          this.semanticAvailable = response.embedded > 0;
-          const notIndexed = scope === "meaning" ? response.embedded === 0 : response.indexed === 0;
-          if (notIndexed) {
-            this.indexNotice = "This library is not indexed. Index it in Libraries.";
-            this.matches = new SvelteSet<string>();
-            this.snippets = new SvelteMap<string, string>();
-            this.total = this.filenameMatches?.size ?? 0;
-            this.pending = false;
-            return;
-          }
+        if (!root) {
+          this.error = "No library selected.";
+          this.pending = false;
+          return;
+        }
+
+        // All's primary lane is literal OCR; its independent broader lanes were scheduled above.
+        // Dedicated meaning: and like: searches use this single-lane path, including compositions.
+        const searchType =
+          scope === "meaning"
+            ? "vector"
+            : scope === "like"
+              ? "image"
+              : ocrMode === "glob"
+                ? "glob"
+                : "match";
+        // `terms` and `raw` share the `match` mode, so a `terms` body must be quoted on the way
+        // out — unquoted, FTS5 would parse `12:30` as a column filter and reject it.
+        const searchQuery =
+          searchType === "match" && ocrMode === "terms" ? quoteFtsTerms(body) : body;
+        const runSearch = (): void => {
+          const visualComponents = [
+            ...visualTerms.map((term) => ({
+              text: term.text,
+              weight: term.polarity === "more" ? term.strength : -term.strength,
+            })),
+            ...references.map((reference) => {
+              const weight =
+                reference.polarity === "more" ? reference.strength : -reference.strength;
+              if (reference.source === "library")
+                return { assetId: Number(reference.assetId), weight };
+              return { externalImage: { bytesBase64: reference.bytesBase64 ?? "" }, weight };
+            }),
+          ];
+          void window.nicegal.backend
+            .searchOcr({
+              query: composedVisual ? "" : searchQuery,
+              type: searchType,
+              root,
+              limit: SEARCH_RESULT_LIMIT,
+              searchSession,
+              searchLane: "literal",
+              timeline,
+              ...time,
+              ...(composedVisual
+                ? {
+                    imageQuery: {
+                      components: visualComponents,
+                    },
+                  }
+                : {}),
+            })
+            .then((response) =>
+              this.publish(generation, () => {
+                if (generation !== this.generation) return;
+                this.matches = new SvelteSet(response.results.map((result) => result.assetId));
+                this.snippets = new SvelteMap(
+                  response.results.map((result) => [result.assetId, result.snippet] as const),
+                );
+                // The response is already in the backend's final rank order (reranked server-side),
+                // so relevance order is response order — nothing to re-sort. A server without `rank`
+                // simply leaves that order as the only signal, which is the graceful degradation.
+                this.rankedIds = response.results.map((result) => result.assetId);
+                this.scores = new SvelteMap(
+                  response.results.flatMap((result) => {
+                    const score = result.distance ?? result.score;
+                    return score === undefined ? [] : [[result.assetId, score] as const];
+                  }),
+                );
+                this.total = response.total;
+                if (response.total > response.results.length)
+                  this.indexNotice = "Result limit reached; narrow the search by date.";
+              }),
+            )
+            .catch((error: unknown) =>
+              this.publish(generation, () => {
+                if (generation === this.generation) this.error = searchErrorMessage(error);
+              }),
+            )
+            .finally(() =>
+              this.publish(generation, () => {
+                if (generation === this.generation) this.pending = false;
+              }),
+            );
+        };
+
+        // The documented embedding-coverage endpoint reports OCR-text vectors only. CLIP image
+        // coverage has no equivalent yet, so run the text-to-image search and let its empty result
+        // mean exactly that — not a guessed “not indexed” state.
+        if (scope === "like") {
           runSearch();
-        })
-        .catch(() => {
-          if (generation === this.generation) runSearch();
-        });
-    }, composedVisual ? 250 : SEARCH_DEBOUNCE_MS);
+          return;
+        }
+
+        const coverageRequest = window.nicegal.backend.getTextEmbeddingCoverage(root);
+
+        // `meaning` needs embeddings; `ocr` and `all` only need OCR text, so they gate on
+        // `indexed` instead — an un-embedded-but-OCR'd library should still search fine.
+        void coverageRequest
+          .then((response) => {
+            if (generation !== this.generation) return;
+            this.semanticAvailable = response.embedded > 0;
+            const notIndexed =
+              scope === "meaning" ? response.embedded === 0 : response.indexed === 0;
+            if (notIndexed) {
+              this.indexNotice = "This library is not indexed. Index it in Libraries.";
+              this.matches = new SvelteSet<string>();
+              this.snippets = new SvelteMap<string, string>();
+              this.total = this.filenameMatches?.size ?? 0;
+              this.pending = false;
+              return;
+            }
+            runSearch();
+          })
+          .catch(() => {
+            if (generation === this.generation) runSearch();
+          });
+      },
+      composedVisual ? 250 : SEARCH_DEBOUNCE_MS,
+    );
   }
 
   /**
@@ -415,12 +610,15 @@ export class OcrSearchController {
     const body = this.searchBody;
     const dated = filterItemsByDates(items, dates);
     const filtering = this.query.length > 0;
-    if (!body && !this.visualReferences.length) return { items: dated, matchTotal: dated.length, filtering };
+    if (!body && !this.activeVisualReferences.length)
+      return { items: dated, matchTotal: dated.length, filtering };
+
+    if (scope === "all") return this.applyAll(dated, filtering);
 
     if (this.sortMode === "relevance" && isRankableScope(scope)) {
       const ranked = this.rankItems(dated, scope);
       return {
-        items: ranked.length > RANKED_RESULT_LIMIT ? this.truncateRanked(ranked, scope) : ranked,
+        items: ranked,
         matchTotal: ranked.length,
         filtering,
       };
@@ -430,13 +628,72 @@ export class OcrSearchController {
     return { items: filtered, matchTotal: filtered.length, filtering };
   }
 
+  private applyAll(items: CatalogItem[], filtering: boolean): SearchView {
+    const byId = this.idIndex(items);
+    const literal = this.rankItems(items, "all");
+    const relatedHits = this.broadResults.meaning.results;
+    // Fixed in All, deliberately independent of both the All/CLIP slider and meaning:'s own
+    // session setting. This prevents a huge text-vector tail burying the visual section.
+    const related = relatedHits.slice(
+      0,
+      Math.ceil((relatedHits.length * (100 - ALL_RELATED_MATCH_QUALITY)) / 100),
+    );
+    const visualHits = this.broadResults.visual.results;
+    const visualCount =
+      this.sortMode === "date" && !this.sliderDisabled
+        ? Math.max(1, Math.ceil(visualHits.length * 10 ** ((-2 * this.clipMatchQuality) / 100)))
+        : visualHits.length;
+    const visual = visualHits.slice(0, visualCount);
+    const sources = new SvelteMap<string, string>();
+    const groups: GallerySection[] = [];
+    const combined: CatalogItem[] = [];
+    // First source wins placement, not membership. Keep all contributing source labels, but one
+    // image/selection target. Filtering CLIP before this union cannot remove an admitted text hit.
+    const add = (key: string, label: string, ids: string[], status: string): void => {
+      const start = combined.length;
+      for (const id of ids) {
+        const item = byId.get(id);
+        if (!item) continue;
+        const existing = sources.get(id);
+        sources.set(id, existing ? `${existing}, ${label}` : label);
+        if (!existing) combined.push(item);
+      }
+      groups.push({ key, label, start, count: combined.length - start, status });
+    };
+    add(
+      "literal",
+      "Names and text",
+      literal.map((item) => item.id),
+      this.literalPending ? "Searching…" : this.error || this.indexNotice,
+    );
+    add(
+      "meaning",
+      "Related text",
+      related.map((hit) => hit.assetId),
+      this.broadPending.meaning ? "Searching…" : this.broadErrors.meaning,
+    );
+    add(
+      "visual",
+      "Visual results",
+      visual.map((hit) => hit.assetId),
+      this.broadPending.visual ? "Searching…" : this.broadErrors.visual,
+    );
+    return {
+      items: this.sortMode === "date" ? items.filter((item) => sources.has(item.id)) : combined,
+      sections: this.sortMode === "relevance" ? groups : undefined,
+      sources,
+      matchTotal: combined.length,
+      filtering,
+    };
+  }
+
   /** Date sort: pure set membership, unchanged apart from the percentile cutoff on `meaning`. */
   private filterByScope(items: CatalogItem[], scope: SearchScope): CatalogItem[] {
     if (scope === "name") return filterItems(items, this.filenameMatches);
     if (scope === "ocr") return filterItems(items, this.matches);
     if (scope === "like") return filterItems(items, this.admittedMatches);
     if (scope === "meaning") {
-      return this.indexNotice
+      return this.indexNotice && !this.rankedIds.length
         ? filterItems(items, this.filenameMatches)
         : filterItems(items, this.admittedMatches);
     }
@@ -469,20 +726,17 @@ export class OcrSearchController {
   ): CatalogItem[] {
     const byId = this.idIndex(items);
     const ranked: CatalogItem[] = [];
-    // `indexNotice` means the index this scope needs (OCR for `all`/`ocr`, embeddings for
-    // `meaning`) is empty, so there is no rank order to honour and the filename matches are the
-    // whole result set.
-    if (!this.indexNotice) {
-      for (const id of this.rankedIds) {
-        const item = byId.get(id);
-        if (item) ranked.push(item);
-      }
+    // No index leaves rankedIds empty. A response-limit notice, however, must not discard the
+    // usable partial ranking that did arrive.
+    for (const id of this.rankedIds) {
+      const item = byId.get(id);
+      if (item) ranked.push(item);
     }
     if (scope === "ocr" || scope === "like") return ranked;
 
     const filenameMatches = this.filenameMatches;
     if (!filenameMatches?.size) return ranked;
-    if (scope === "meaning" && !this.indexNotice) return ranked;
+    if (scope === "meaning" && (ranked.length || !this.indexNotice)) return ranked;
 
     // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local dedupe set, scoped to this call, never read reactively
     const claimed = new Set(ranked.map((item) => item.id));
@@ -498,25 +752,6 @@ export class OcrSearchController {
     return [...ranked, ...filenameOnly];
   }
 
-  /**
-   * Applies the top-N cutoff to the ranked hits while letting every filename-only match through:
-   * those are exact matches on text the user typed, and dropping one would read as data loss.
-   */
-  private truncateRanked(
-    ranked: CatalogItem[],
-    scope: "all" | "ocr" | "meaning" | "like",
-  ): CatalogItem[] {
-    if (scope !== "all") return ranked.slice(0, RANKED_RESULT_LIMIT);
-    const filenameMatches = this.filenameMatches;
-    const kept = ranked.slice(0, RANKED_RESULT_LIMIT);
-    if (!filenameMatches?.size) return kept;
-    // `kept` and the tail are disjoint slices of the same array, so no dedupe is needed here.
-    return [
-      ...kept,
-      ...ranked.slice(RANKED_RESULT_LIMIT).filter((item) => filenameMatches.has(item.id)),
-    ];
-  }
-
   dispose(): void {
     this.suspend();
   }
@@ -524,7 +759,13 @@ export class OcrSearchController {
   /** Preserve the query while the service is unavailable, and ignore obsolete responses. */
   suspend(): void {
     this.generation += 1;
+    this.deferredResults = [];
+    if (this.interactionRelease) clearTimeout(this.interactionRelease);
+    this.interacting = false;
     if (this.timer) clearTimeout(this.timer);
+    if (this.broadTimer) clearTimeout(this.broadTimer);
+    void window.nicegal.backend.cancelSearch?.().catch(() => {});
+    this.broadPending = { meaning: false, visual: false };
     this.timer = null;
     this.pending = false;
     this.error = "";
@@ -548,6 +789,9 @@ function normalizeSearchBody(scope: SearchScope, rawBody: string): string {
   // "all", where the odd quote reads as raw FTS5 syntax and fires a broken query mid-typing.
   // Treat it as empty.
   if (!body || (scope === "all" && /^ocr"\s*$/i.test(body))) return "";
+  // Half-typed weights such as `like: 2:` have no searchable component yet.
+  if (scope === "like" && isVisualComposition(body) && !parseVisualTextTerms(body).length)
+    return "";
   return scope === "name" || hasSearchText(body) ? body : "";
 }
 
@@ -592,11 +836,13 @@ function lowerDisplayName(item: CatalogItem): string {
   return cached;
 }
 
-function filenameMatchIds(items: CatalogItem[], query: string): string[] {
+function filenameMatchSnippets(items: CatalogItem[], query: string): SvelteMap<string, string> {
   const normalizedQuery = query.toLowerCase();
-  return items
-    .filter((item) => lowerDisplayName(item).includes(normalizedQuery))
-    .map((item) => item.id);
+  return new SvelteMap(
+    items
+      .filter((item) => lowerDisplayName(item).includes(normalizedQuery))
+      .map((item) => [item.id, item.displayName]),
+  );
 }
 
 function filterItems(items: CatalogItem[], matches: SvelteSet<string> | null): CatalogItem[] {

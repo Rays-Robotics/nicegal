@@ -107,11 +107,23 @@ export interface GalleryLayoutColumn {
 }
 
 export interface GalleryDivider {
+  key?: string;
+  status?: string;
+  count?: number;
   itemIndex: number;
   y: number;
   height: number;
   label: string;
   timestamp: number;
+}
+
+/** Consecutive search results sharing one heading; empty/pending sections still have a heading. */
+export interface GallerySection {
+  key: string;
+  label: string;
+  start: number;
+  count: number;
+  status?: string;
 }
 
 export interface GalleryLayout {

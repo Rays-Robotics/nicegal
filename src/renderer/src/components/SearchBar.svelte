@@ -3,24 +3,26 @@
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import FileText from "@lucide/svelte/icons/file-text";
-  import Info from "@lucide/svelte/icons/info";
   import Images from "@lucide/svelte/icons/images";
+  import Info from "@lucide/svelte/icons/info";
   import ScanEye from "@lucide/svelte/icons/scan-eye";
   import ScanText from "@lucide/svelte/icons/scan-text";
   import Search from "@lucide/svelte/icons/search";
   import TextSearch from "@lucide/svelte/icons/text-search";
   import X from "@lucide/svelte/icons/x";
+  import { tick } from "svelte";
 
   import { isQuerySyntaxError } from "../lib/errors";
   import { popoverDismiss } from "../lib/popover-dismiss";
   import { OCR_SYNTAX_NOTES, parseQuery, withScope, type SearchScope } from "../lib/search-query";
+  import { parseVisualTextTerms, type VisualReferenceTerm } from "../lib/visual-query";
   import VisualSearchComposer from "./VisualSearchComposer.svelte";
-  import type { VisualReferenceTerm } from "../lib/visual-query";
 
   // The match count used to sit at the right of the field; it lives in the status bar's items
   // segment now (see StatusBar.svelte), which has the width to spare and no duplicate denominator.
   let {
     value = $bindable(""),
+    composerOpen = $bindable(false),
     message,
     infoNotice,
     semanticSuggestion = false,
@@ -30,8 +32,10 @@
     onchoosevisualfile,
     onaddlibraryvisual,
     ondropvisualfiles,
+    selectedPhotoCount = 0,
   }: {
     value?: string;
+    composerOpen?: boolean;
     message?: string | null;
     infoNotice?: string | null;
     semanticSuggestion?: boolean;
@@ -41,6 +45,7 @@
     onchoosevisualfile?: () => void;
     onaddlibraryvisual?: () => void;
     ondropvisualfiles?: (files: File[]) => void;
+    selectedPhotoCount?: number;
   } = $props();
 
   type ScopeOption = {
@@ -65,7 +70,7 @@
       label: "All",
       menuLabel: "All",
       prefix: "",
-      summary: "File names and text found in pictures",
+      summary: "File names, exact text, related text, and visual results",
       icon: Search,
     },
     {
@@ -79,7 +84,7 @@
     {
       scope: "ocr",
       label: "Text",
-      menuLabel: "Text in picture",
+      menuLabel: "Exact text",
       prefix: "ocr:",
       summary: "Exact words read from the picture. All words must match.",
       syntax: [...OCR_SYNTAX_NOTES],
@@ -87,18 +92,18 @@
     },
     {
       scope: "meaning",
-      label: "Meaning",
-      menuLabel: "Text by meaning",
+      label: "Related text",
+      menuLabel: "Related text",
       prefix: "meaning:",
       summary: "Text found in pictures, matched by meaning instead of spelling",
       icon: TextSearch,
     },
     {
       scope: "like",
-      label: "Looks like",
-      menuLabel: "Looks like",
+      label: "Visual search",
+      menuLabel: "Visual search",
       prefix: "like:",
-      summary: "Images matched by the meaning of a text description",
+      summary: "Find images using descriptions or example images",
       icon: ScanEye,
     },
   ];
@@ -124,9 +129,11 @@
   let inputEl: HTMLInputElement;
   let backdropEl: HTMLDivElement;
   let menuOpen = $state(false);
-  let composerOpen = $state(false);
+  let searchBarEl: HTMLDivElement;
+  const hintId = $props.id();
 
   const parsed = $derived(parseQuery(value));
+  const exampleCount = $derived(parseVisualTextTerms(parsed.body).length + visualReferences.length);
   const selectedScope = $derived(
     scopeOptions.find((option) => option.scope === parsed.scope) ?? scopeOptions[0],
   );
@@ -138,7 +145,13 @@
    */
   const scopeHint = $derived.by(() => {
     if (parsed.scope === "all" || parsed.body.trim()) return "";
-    const text = scopeHintText(selectedScope);
+    const reference = visualReferences[0];
+    const text =
+      parsed.scope === "like" && reference
+        ? visualReferences.length === 1
+          ? `Images ${reference.polarity === "less" ? "less " : ""}like ${reference.displayName}`
+          : `Visual search with ${visualReferences.length} images`
+        : scopeHintText(selectedScope);
     return /\s$/.test(value) ? text : ` ${text}`;
   });
   /** Syntax reminder under a rejected query — the same line the empty box shows as ghost text,
@@ -151,20 +164,50 @@
   const placeholder = "Search file names, text, and images";
 
   function selectScope(scope: SearchScope): void {
+    composerOpen = false;
+    if (scope !== "like") onvisualreferenceschange?.([]);
     value = withScope(value, scope);
     menuOpen = false;
     inputEl?.focus();
   }
 
   function toggleMenu(): void {
+    composerOpen = false;
     menuOpen = !menuOpen;
   }
 
   function toggleComposer(): void {
+    menuOpen = false;
     composerOpen = !composerOpen;
+    if (composerOpen) {
+      void tick().then(() => {
+        const target =
+          searchBarEl.querySelector<HTMLElement>(".visual-composer input") ??
+          searchBarEl.querySelector<HTMLElement>(".visual-composer .add-menu > button");
+        target?.focus();
+      });
+    }
+  }
+
+  function closeComposer(): void {
+    composerOpen = false;
+    inputEl?.focus();
+  }
+
+  function dismissPopovers(): void {
+    menuOpen = false;
+    composerOpen = false;
+  }
+
+  function focusout(event: FocusEvent): void {
+    if (event.relatedTarget instanceof Node && !searchBarEl.contains(event.relatedTarget)) {
+      dismissPopovers();
+    }
   }
 
   function clear(): void {
+    dismissPopovers();
+    onvisualreferenceschange?.([]);
     value = "";
     inputEl?.focus();
   }
@@ -175,15 +218,24 @@
   }
 
   function onkeydown(event: KeyboardEvent): void {
+    if (event.key === "Enter" && event.target instanceof HTMLInputElement && !event.isComposing) {
+      event.preventDefault();
+      dismissPopovers();
+      inputEl?.focus();
+      return;
+    }
     if (event.key !== "Escape") return;
 
-    if (menuOpen) {
-      menuOpen = false;
+    if (menuOpen || composerOpen) {
+      event.preventDefault();
       event.stopPropagation();
+      dismissPopovers();
+      inputEl?.focus();
       return;
     }
 
-    if (value) {
+    if (event.target === inputEl && (value || visualReferences.length)) {
+      event.preventDefault();
       event.stopPropagation();
       clear();
     }
@@ -207,11 +259,21 @@
     event.preventDefault();
     ondropvisualfiles?.(files);
   }
-
 </script>
 
-<div class="search-bar" {@attach popoverDismiss(menuOpen || composerOpen, () => { menuOpen = false; composerOpen = false; })}>
-  <div class="search-field" role="search" ondragover={(event) => parsed.scope === "like" && event.preventDefault()} ondrop={dropVisualFiles}>
+<!-- Keyboard events are delegated from the search controls and the nested composer. -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="search-bar"
+  bind:this={searchBarEl}
+  role="search"
+  {onkeydown}
+  onfocusout={focusout}
+  ondragover={(event) => parsed.scope === "like" && event.preventDefault()}
+  ondrop={dropVisualFiles}
+  {@attach popoverDismiss(menuOpen || composerOpen, dismissPopovers)}
+>
+  <div class="search-field">
     <div class="scope-control">
       <button
         class="scope-button"
@@ -255,7 +317,7 @@
             <div class="semantic-suggestion" role="status">
               <TextSearch size={11} aria-hidden="true" />
               <span>Want broader results?</span>
-              <a href="#meaning-search" onclick={activateSemanticSearch}>Search by meaning</a>
+              <a href="#meaning-search" onclick={activateSemanticSearch}>Find related text</a>
             </div>
           {/if}
         </div>
@@ -274,13 +336,15 @@
       <input
         bind:this={inputEl}
         bind:value
-        {onkeydown}
         onscroll={syncBackdrop}
         type="text"
         {placeholder}
         spellcheck="false"
         autocomplete="off"
+        aria-label="Search"
+        aria-describedby={scopeHint ? hintId : undefined}
       />
+      <span id={hintId} class="search-hint-accessible">{scopeHint.trim()}</span>
     </div>
 
     {#if parsed.scope === "like" && visualReferences.length}
@@ -297,7 +361,7 @@
       </button>
     {/if}
 
-    {#if value}
+    {#if value || visualReferences.length}
       <button
         class="clear-button"
         type="button"
@@ -318,7 +382,11 @@
         aria-haspopup="dialog"
         onclick={toggleComposer}
       >
-        <span>Compose visual search</span>
+        <span
+          >Compose visual search{exampleCount
+            ? ` · ${exampleCount} example${exampleCount === 1 ? "" : "s"}`
+            : ""}</span
+        >
         <ChevronDown size={11} aria-hidden="true" />
       </button>
     </div>
@@ -331,7 +399,9 @@
       onreferenceschange={(references) => onvisualreferenceschange?.(references)}
       onchoosefile={() => onchoosevisualfile?.()}
       onaddlibrary={() => onaddlibraryvisual?.()}
-      onclose={() => (composerOpen = false)}
+      {selectedPhotoCount}
+      onclose={closeComposer}
+      onclear={clear}
     />
   {/if}
   {#if message && !menuOpen}
@@ -512,9 +582,17 @@
     color: var(--text-primary);
   }
 
-  .photo-reference-chip[aria-expanded="true"] { border-color: var(--accent-active); color: var(--text-primary); }
+  .photo-reference-chip[aria-expanded="true"] {
+    border-color: var(--accent-active);
+    color: var(--text-primary);
+  }
 
-  .compose-chip-row { display: flex; height: 29px; align-items: end; padding-left: var(--space-5); }
+  .compose-chip-row {
+    display: flex;
+    height: 29px;
+    align-items: end;
+    padding-left: var(--space-5);
+  }
 
   .compose-chip {
     z-index: var(--z-panel);
@@ -533,7 +611,10 @@
   }
 
   .compose-chip:hover,
-  .compose-chip[aria-expanded="true"] { border-color: var(--accent); color: var(--text-primary); }
+  .compose-chip[aria-expanded="true"] {
+    border-color: var(--accent);
+    color: var(--text-primary);
+  }
 
   .scope-button {
     gap: var(--space-3);
@@ -625,6 +706,15 @@
     min-width: 0;
     height: 30px;
     position: relative;
+  }
+
+  .search-hint-accessible {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .input-wrap > .input-backdrop,

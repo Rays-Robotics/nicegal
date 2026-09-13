@@ -1,5 +1,6 @@
 {
   "name": "nicegal",
+  "desktopName": "io.github.nicegal.nicegal",
   "license": "MIT",
   "version": "0.0.0",
   "description": "Desktop gallery with OCR, semantic text, and image similarity search",
@@ -29,7 +30,8 @@
   },
   "dependencies": {
     "@lucide/svelte": "^1.33.0",
-    "@viselect/vanilla": "^3.10.0"
+    "@viselect/vanilla": "^3.10.0",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
