@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   version:
-    if: github.repository == 'nicegal/nicegal'
+    if: github.repository == 'centuryofimage/nicegal'
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -51,7 +51,7 @@ jobs:
           echo "Building $version (previous tag: ${latest:-none})"
 
   build:
-    if: github.repository == 'nicegal/nicegal'
+    if: github.repository == 'centuryofimage/nicegal'
     needs: version
     strategy:
       fail-fast: false
@@ -179,7 +179,7 @@ jobs:
           }
 
       - name: Attest downloads
-        if: github.repository == 'nicegal/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.repository == 'centuryofimage/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         id: attest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
@@ -192,7 +192,7 @@ jobs:
             dist/*.deb
 
       - name: Preserve the attestation bundle
-        if: github.repository == 'nicegal/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.repository == 'centuryofimage/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
         shell: bash
@@ -214,7 +214,7 @@ jobs:
 
   publish:
     needs: [version, build]
-    if: github.repository == 'nicegal/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.repository == 'centuryofimage/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout release notes
@@ -230,7 +230,7 @@ jobs:
           path: dist
 
       - name: Tag and publish the release
-        if: github.repository == 'nicegal/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.repository == 'centuryofimage/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash

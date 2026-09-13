@@ -2,7 +2,7 @@
 
 A Windows and Linux desktop gallery with fast thumbnail browsing, filename and OCR search,
 semantic text search, and CLIP image similarity search. The frontend uses Electron,
-Svelte 5, and TypeScript; [nicegal-server](https://github.com/bruh20059234802020490/nicegal-server)
+Svelte 5, and TypeScript; [nicegal-server](https://github.com/centuryofimage/nicegal-server)
 provides the Rust indexing and search backend.
 
 ## Build from source
@@ -12,7 +12,7 @@ C++ build tools, and uv for Windows x64. The backend
 build provisions Python 3.13 and its ONNX Runtime distributions with uv.
 
 ```powershell
-git clone --recurse-submodules https://github.com/bruh20059234802020490/nicegal.git
+git clone --recurse-submodules https://github.com/centuryofimage/nicegal.git
 cd nicegal
 pnpm install --frozen-lockfile
 pnpm build:win
@@ -30,7 +30,7 @@ Upgrade by running a newer NSIS installer. Gallery databases remain in
 Automatic updates are not enabled yet. NSIS is the intended future
 [electron-updater](https://www.electron.build/auto-update.html) path;
 ZIP and portable builds will continue to use manual updates. The Windows build
-already embeds the public `nicegal/nicegal` GitHub Releases destination and emits
+already embeds the public `centuryofimage/nicegal` GitHub Releases destination and emits
 `latest.yml` plus the NSIS blockmap. CI publishes these with the matching installer
 and provenance in one release. Local builds use `--publish never`.
 
@@ -100,7 +100,7 @@ NSIS, ZIP, portable executable, and update metadata, plus Linux AppImage and
 Debian packages. Verify a downloaded file with GitHub CLI:
 
 ```powershell
-gh attestation verify PATH_TO_DOWNLOADED_FILE --repo nicegal/nicegal
+gh attestation verify PATH_TO_DOWNLOADED_FILE --repo centuryofimage/nicegal
 ```
 
 This checks the artifact's provenance against this repository. It is separate
