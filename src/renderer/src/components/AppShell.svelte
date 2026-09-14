@@ -3,7 +3,6 @@
 
   import type { UpdateStatus as UpdateState } from "../../../shared/updates";
 
-  import PerfHud from "./PerfHud.svelte";
   import UpdateStatus from "./UpdateStatus.svelte";
 
   let update = $state<UpdateState>({ phase: "disabled", version: null });
@@ -61,7 +60,6 @@
     <UpdateStatus status={update} onnotes={openReleaseNotes} />
     {@render status()}
   </footer>
-  <PerfHud />
 </main>
 
 {#if modals}

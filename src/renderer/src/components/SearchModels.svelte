@@ -64,6 +64,27 @@
   const settingUp = $derived(
     orchestrator.preparingSearchModels || Boolean(setupJob && jobs.running),
   );
+  const currentSetupModel = $derived.by((): string | null => {
+    const job = setupJob;
+    if (!settingUp || !job) return null;
+    if (job.type === "ocrModelLoad") {
+      return job.phase === "downloadingModels" || job.phase === "loadingModels"
+        ? "PaddleOCR v6 small detector and recognizer"
+        : null;
+    }
+    if (job.phase !== "loadingModels") return null;
+    const imageModel = runtime.imageModel;
+    const imageName =
+      imageModel?.models.find((model) => model.id === imageModel.activeModel)?.name ??
+      imageModel?.activeModel ??
+      "Image search model";
+    const models = [
+      "BGE small English v1.5 · text meaning",
+      `${imageName} · image indexing`,
+      ...(runtime.supportsImageTextQueries ? [`${imageName} · image text search`] : []),
+    ];
+    return models[job.progress.phaseCompleted] ?? null;
+  });
   const ready = $derived(
     runtime.ocrLoaded &&
       runtime.models &&
@@ -158,6 +179,13 @@
       needs attention{:else if stopped}Setup stopped{:else}Search models load when needed{/if}
   </p>
   {#if settingUp && setupJob}<p>{jobLabel(setupJob)} {jobPhaseProgress(setupJob).text}</p>{/if}
+  {#if currentSetupModel}
+    <p class="current-model" role="status">
+      {setupJob?.phase === "downloadingModels" ? "Downloading" : "Preparing"}:
+      <strong>{currentSetupModel}</strong>
+      {#if setupJob?.type === "modelPrepare"}<span> (may download model files)</span>{/if}
+    </p>
+  {/if}
   {#if setupJob?.status === "cancelling"}<p>
       Stopping after the current download or model finishes. Completed downloads will be kept.
     </p>{/if}
@@ -241,6 +269,9 @@
   .setup-status {
     color: var(--text-primary);
     font-weight: var(--font-weight-semibold);
+  }
+  .current-model {
+    overflow-wrap: anywhere;
   }
   p {
     color: var(--text-secondary);

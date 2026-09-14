@@ -117,7 +117,7 @@ export function startUpdates(isTrustedSender: (event: IpcMainInvokeEvent) => boo
   // Do not call quitAndInstall(): that starts the installer before the backend has stopped.
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.autoRunAppAfterInstall = false;
-  autoUpdater.allowPrerelease = true;
+  autoUpdater.allowPrerelease = false;
   autoUpdater.channel = "latest";
   autoUpdater.allowDowngrade = false; // Setting the channel enables downgrades unless reset.
   autoUpdater.disableWebInstaller = true;

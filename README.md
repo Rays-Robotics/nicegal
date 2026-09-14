@@ -2,7 +2,7 @@
 
 nicegal is a super fast desktop gallery. it has powerful search features, and is designed to help people find stuff in gigantic unsorted downloads folders.
 
-it supports searching the text inside images with optical character recognition (PaddleOCR), and visually searching images with CLIP. you can also search for images with other images. the OCR and CLIP search indexing uses your gpu if you have one.
+it supports searching the text inside images with optical character recognition (PaddleOCR), and visually searching images with CLIP. you can also search for images with other images. the OCR and CLIP search indexing uses your gpu if you have one (linux gpu support is pending).
 
 <img src="docs/images/gallery-composer.jpg" width="888">
 
@@ -37,7 +37,7 @@ If you have a really bad gpu, you might benefit from changing the onnx execution
 
 ## Special acknowledgements
 
-This project was heavily inspired by (rclip)[https://github.com/yurijmikhalevich/rclip]. It definitely wouldn't have been possible without (ort)[https://ort.pyke.io/] and (sqlite-vec)[https://github.com/asg017/sqlite-vec].
+This project was heavily inspired by [rclip](https://github.com/yurijmikhalevich/rclip). It definitely wouldn't have been possible without [ort](https://ort.pyke.io/) and [sqlite-vec](https://github.com/asg017/sqlite-vec).
 
 ## License
 

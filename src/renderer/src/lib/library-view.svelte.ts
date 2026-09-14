@@ -66,6 +66,7 @@ export function createLibraryViewController(
   // Presentation settings emit through the same store. Only a changed timeline should rerun a
   // search; layout switches must retain the ranked results rather than clearing/requerying them.
   const searchTimeline = $derived(preferences.current.sortField);
+  const supportsImageTextQueries = $derived(runtime.supportsImageTextQueries);
   const layoutPreferences = fromStore(layoutOptions);
   const galleryScroll = new GalleryScrollState();
   const gallerySelection = new GallerySelection();
@@ -144,7 +145,6 @@ export function createLibraryViewController(
       return;
     }
     void visualReferenceRevision;
-    const supportsImageTextQueries = runtime.supportsImageTextQueries;
     untrack(() => ocrSearch.schedule(root, items, timeline, supportsImageTextQueries));
   });
   $effect(() => {
@@ -184,7 +184,8 @@ export function createLibraryViewController(
   }
   function openSettingsDialog(): void {
     activeDialog = "settings";
-    if (catalog.backendStatus.ready) void runtime.refresh();
+    if (catalog.backendStatus.ready && !runtime.status && !runtime.loading)
+      void runtime.refresh();
   }
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key !== "Escape") return;

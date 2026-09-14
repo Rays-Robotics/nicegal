@@ -128,12 +128,10 @@
   --space-14: 14px;
   --space-16: 16px;
 
-  /* Z-index: only four layers exist today. --z-perf-hud is intentionally outside the ordered
-     scale — it is a dev-only overlay that must sit above everything else in the document. */
+  /* Ordered overlay layers. */
   --z-raised: 1;
   --z-panel: 10;
   --z-popover: 100;
-  --z-perf-hud: 2147483000;
 
   /* Focus ring: a dotted outline (the Win32 keyboard-focus convention), inset rather than a
      glow/halo per the no-soft-shadows rule. */

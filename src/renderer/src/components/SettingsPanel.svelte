@@ -172,10 +172,7 @@
         <h2 id="updates-title">Updates</h2>
         <label class="row">
           <span class="setting-label"
-            >Automatic updates<small
-              >Checks once per launch. Disabling stops downloads and installation on quit. Enabling
-              takes effect next launch.</small
-            ></span
+            >Automatic updates</span
           >
           <input
             type="checkbox"

@@ -417,6 +417,12 @@
           <li>
             <strong>Choose what to search</strong>
             <div class="welcome-search-menu">
+              <img
+                src={searchMenuGuide}
+                width="216"
+                height="121"
+                alt="Search scope menu offering names, exact text, related text, and visual similarity"
+              />
               <div>
                 <p>Choose a search type from the menu, or type a prefix:</p>
                 <ul class="search-types">
@@ -444,12 +450,6 @@
                   Add <code>during:2026-06</code> to search within a month in either view.
                 </p>
               </div>
-              <img
-                src={searchMenuGuide}
-                width="216"
-                height="121"
-                alt="Search scope menu offering names, exact text, related text, and visual similarity"
-              />
             </div>
           </li>
           <li>
@@ -645,17 +645,11 @@
     flex: none;
   }
   .welcome-search-menu {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-12);
     grid-column: 2;
     margin-top: var(--space-6);
   }
   .welcome-search-menu p {
     margin: 0;
-  }
-  .welcome-search-menu > div {
-    flex: 1;
   }
   .search-types {
     margin: var(--space-6) 0;
@@ -673,7 +667,8 @@
   }
   .welcome-search-menu img {
     width: 216px;
-    flex: none;
+    float: right;
+    margin: 0 0 var(--space-6) var(--space-12);
   }
   .welcome-splash figure {
     grid-column: 2;
@@ -696,8 +691,8 @@
     font-size: var(--font-size-sm);
   }
   @media (max-width: 560px) {
-    .welcome-search-menu {
-      flex-direction: column;
+    .welcome-search-menu img {
+      width: min(216px, 50%);
     }
     .welcome-splash-actions {
       flex-wrap: wrap;

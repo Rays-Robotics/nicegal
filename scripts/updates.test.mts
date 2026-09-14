@@ -126,7 +126,7 @@ test("one check per launch, ready state, trusted notes and quit deferral", async
   assert.equal(updater.autoDownload, false, "downloads start explicitly with a cancellation token");
   assert.equal(updater.autoInstallOnAppQuit, true);
   assert.equal(updater.autoRunAppAfterInstall, false);
-  assert.equal(updater.allowPrerelease, true);
+  assert.equal(updater.allowPrerelease, false);
   assert.equal(updater.channel, "latest");
   assert.equal(updater.allowDowngrade, false);
   assert.equal(updater.disableDifferentialDownload, false);
