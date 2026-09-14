@@ -1,6 +1,6 @@
 # Nicegal
 
-[Download](/releases)
+[Downloads](https://github.com/centuryofimage/nicegal/releases)
 
 nicegal is a super fast desktop gallery. it has powerful search features, and is designed to help people find stuff in gigantic unsorted downloads folders.
 
