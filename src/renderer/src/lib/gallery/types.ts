@@ -107,6 +107,7 @@ export interface GalleryLayoutColumn {
 }
 
 export interface GalleryDivider {
+  collapsed?: boolean;
   key?: string;
   status?: string;
   count?: number;
@@ -119,6 +120,7 @@ export interface GalleryDivider {
 
 /** Consecutive search results sharing one heading; empty/pending sections still have a heading. */
 export interface GallerySection {
+  collapsed?: boolean;
   key: string;
   label: string;
   start: number;

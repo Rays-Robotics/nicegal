@@ -65,7 +65,7 @@ export class RuntimeController {
 
   async refresh(): Promise<void> {
     // A read started during a provider write can return the old configuration and win the race.
-    if (this.saving) return;
+    if (this.saving || this.imageModelSaving) return;
     const generation = ++this.statusGeneration;
     this.loading = true;
     this.error = null;
@@ -119,25 +119,23 @@ export class RuntimeController {
       this.imageModelError = errorMessage(error);
     } finally {
       this.imageModelSaving = false;
+      this.loading = false;
     }
   }
 
   async setExecutionProvider(executionProvider: ExecutionProviderId): Promise<void> {
     if (this.saving || this.imageModelSaving) return;
-    const generation = ++this.statusGeneration;
-    const previous = this.status;
+    this.statusGeneration += 1;
     this.saving = true;
     this.error = null;
     try {
-      const status = await window.nicegal.backend.setExecutionProvider(executionProvider);
-      if (generation === this.statusGeneration) this.status = status;
+      this.status = await window.nicegal.backend.setExecutionProvider(executionProvider);
+      await this.refreshModels();
     } catch (error) {
-      if (generation === this.statusGeneration) {
-        this.status = previous;
-        this.error = errorMessage(error);
-      }
+      this.error = errorMessage(error);
     } finally {
       this.saving = false;
+      this.loading = false;
     }
   }
 }

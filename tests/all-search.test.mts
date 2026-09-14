@@ -13,7 +13,7 @@ const vite = await createServer({
   cacheDir: "node_modules/.vite-all-search-tests",
   optimizeDeps: { noDiscovery: true, include: [] },
   plugins: [svelte()],
-  server: { middlewareMode: true, hmr: false, watch: null },
+  server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   appType: "custom",
 });
 after(() => vite.close());
@@ -307,7 +307,7 @@ test("a lane failure preserves siblings and commits wait until pointer interacti
     f.search.apply(catalog).items.map((item) => item.id),
     ["1", "2", "8"],
   );
-  assert.match(f.search.apply(catalog).sections![0].status!, /Model unavailable/);
+  assert.match(f.search.apply(catalog).sections![0].status!, /Related text unavailable/);
   assert.equal(f.search.pending, false);
   f.search.dispose();
 });
@@ -366,5 +366,130 @@ test("section layouts preserve indices and range indexes in all three modes, inc
         column.tops,
         [...column.tops].sort((a: number, b: number) => a - b),
       );
+  }
+});
+
+test("All without OCR retains filename matches alongside visual results", async () => {
+  const f = fixture();
+  f.search.query = "needle";
+  f.search.schedule("library", items(), "modified", true, false);
+  await pause();
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.requests[0].type, "image");
+  assert.equal(f.search.allMode, true);
+  f.complete(f.requests[0].searchLane!, response(["4", "3"]));
+  await pause(10);
+  assert.deepEqual(
+    f.search.apply(items()).items.map((item) => item.id),
+    ["2", "4", "3"],
+  );
+  assert.equal(f.search.indexNotice, "");
+  f.search.query = "name: needle";
+  f.search.schedule("library", items(), "modified", true, false);
+  await pause(120);
+  assert.equal(f.requests.length, 1);
+  assert.deepEqual(
+    f.search.apply(items()).items.map((item) => item.id),
+    ["2"],
+  );
+});
+
+test("indexing choices persist independently for each library", async () => {
+  const { settings, settingsDefaults, libraryIndexing, setLibraryIndexing } =
+    await vite.ssrLoadModule("/src/renderer/src/lib/settings.svelte.ts");
+  settings.set({ ...settingsDefaults, libraryIndexing: {} });
+  setLibraryIndexing("screenshots", { ocr: true, image: true });
+  setLibraryIndexing("photos", { ocr: false, image: true });
+  let current;
+  const unsubscribe = settings.subscribe((value: unknown) => {
+    current = value;
+  });
+  assert.deepEqual(libraryIndexing(current, "screenshots"), { ocr: true, image: true });
+  assert.deepEqual(libraryIndexing(current, "photos"), { ocr: false, image: true });
+  assert.deepEqual(libraryIndexing(current, "new library"), { ocr: false, image: true });
+  const restored = JSON.parse(JSON.stringify(current));
+  assert.deepEqual(libraryIndexing(restored, "screenshots"), { ocr: true, image: true });
+  unsubscribe();
+});
+
+test("a malformed section response cannot corrupt successful results, including deferred arrivals", async () => {
+  for (const deferred of [false, true]) {
+    const f = fixture();
+    f.search.query = "needle";
+    f.search.schedule("library", items(), "modified", true, false);
+    await pause();
+    f.search.setInteracting(deferred);
+    f.complete("visual", { total: 10, results: null } as unknown as SearchResponse);
+    await pause(5);
+    f.search.setInteracting(false);
+    await pause(5);
+    const view = f.search.apply(items());
+    assert.deepEqual(
+      view.items.map((item) => item.id),
+      ["2"],
+    );
+    assert.equal(view.sections?.[0].count, 1);
+    assert.equal(view.sections?.[1].count, 0);
+    assert.equal(view.sections?.[1].status, "Visual search unavailable. Try again.");
+    assert.equal(f.search.pending, false);
+    f.search.dispose();
+  }
+});
+
+test("collapsed sections preserve counts and dense layout indices in every layout", async () => {
+  const { collapseSearchSections } = await vite.ssrLoadModule(
+    "/src/renderer/src/lib/gallery/search-sections.ts",
+  );
+  const original = {
+    items: items(),
+    matchTotal: 8,
+    filtering: true,
+    sections: [
+      { key: "literal", label: "Names and text", start: 0, count: 3 },
+      { key: "visual", label: "Visual results", start: 3, count: 5 },
+    ],
+  };
+  for (const hidden of [["literal"], ["visual"], ["literal", "visual"]]) {
+    const view = collapseSearchSections(original, new Set(hidden));
+    assert.equal(view.matchTotal, 8);
+    assert.deepEqual(
+      view.sections.map((section) => section.count),
+      [3, 5],
+    );
+    assert.equal(
+      view.items.length,
+      8 - (hidden.includes("literal") ? 3 : 0) - (hidden.includes("visual") ? 5 : 0),
+    );
+    for (const mode of ["grid", "masonry", "justified"]) {
+      const layout = buildLayout(view.items, 800, { mode }, view.sections);
+      assert.equal(layout.dividers.length, 2);
+      assert.equal(layout.positions.length, view.items.length);
+      assert.deepEqual(
+        layout.positions.map((position) => position.index),
+        view.items.map((_, index) => index),
+      );
+    }
+  }
+  assert.equal(collapseSearchSections(original, new Set()), original);
+});
+
+test("missing text coverage exposes setup state independently of library status and resets on new search", async () => {
+  for (const prefix of ["ocr:", "meaning:"]) {
+    const f = fixture();
+    window.nicegal.backend.getTextEmbeddingCoverage = async () => ({
+      indexed: 0,
+      embedded: 0,
+      pending: 0,
+      lastIndexedAt: null,
+    });
+    f.search.query = `${prefix} needle`;
+    f.search.schedule("library", items(), "modified");
+    await pause(120);
+    assert.equal(f.search.textSetupRequired, true);
+    assert.equal(f.requests.length, 0);
+    f.search.query = "name: needle";
+    f.search.schedule("library", items(), "modified");
+    assert.equal(f.search.textSetupRequired, false);
+    f.search.dispose();
   }
 });

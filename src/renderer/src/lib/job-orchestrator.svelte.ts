@@ -1,9 +1,11 @@
-import type { JobTracker } from "./job-tracker.svelte";
 import { get } from "svelte/store";
+
+import type { JobTracker } from "./job-tracker.svelte";
 
 import {
   DEFAULT_OCR_MODEL_LOAD_REQUEST,
   type JobRequest,
+  type IndexSelection,
   type JobSnapshot,
 } from "../../../shared/backend";
 import { errorMessage } from "./errors";
@@ -35,7 +37,11 @@ export class JobOrchestrator {
   preparingSearchModels = $state(false);
   indexRoot = $state<string | null>(null);
   restartingIndex = $state(false);
-  private indexIntent = $state<{ root: string; retryFailed: boolean } | null>(null);
+  private indexIntent = $state<{
+    root: string;
+    retryFailed: boolean;
+    selection: IndexSelection;
+  } | null>(null);
   private indexGeneration = 0;
   private fallbackResumes = 0;
 
@@ -56,7 +62,7 @@ export class JobOrchestrator {
     if (!this.restartingIndex || !this.indexIntent) return;
     const intent = this.indexIntent;
     this.restartingIndex = false;
-    await this.startOcrIndex(intent.root, intent.retryFailed);
+    await this.startOcrIndex(intent.root, intent.retryFailed, intent.selection);
   }
   /**
    * An OCR request can be temporarily represented by another job when the backend is compiling
@@ -137,12 +143,18 @@ export class JobOrchestrator {
     }
   }
 
-  async startOcrIndex(root: string, retryFailed = false): Promise<void> {
+  async startOcrIndex(
+    root: string,
+    retryFailed = false,
+    selection: IndexSelection = { ocr: true, image: true },
+  ): Promise<void> {
+    if (!selection.ocr && !selection.image) return;
     const debugLimit = get(settings).debugIndexLimit;
     const request: JobRequest = {
       type: "ocrIndex",
       params: {
         root,
+        ...selection,
         scan: {
           recursive: true,
           cleanup: false,
@@ -154,7 +166,7 @@ export class JobOrchestrator {
     if (!this.indexIntent) {
       this.indexGeneration += 1;
       this.fallbackResumes = 0;
-      this.indexIntent = { root, retryFailed };
+      this.indexIntent = { root, retryFailed, selection: { ...selection } };
     }
     this.indexRoot = root;
     const generation = this.indexGeneration;
@@ -229,7 +241,11 @@ export class JobOrchestrator {
           this.restartingIndex = true;
           return;
         }
-        await this.startOcrIndex(continuation.root, continuation.retryFailed);
+        await this.startOcrIndex(
+          continuation.root,
+          continuation.retryFailed,
+          this.indexIntent.selection,
+        );
       } catch (error) {
         if (generation !== this.indexGeneration) return;
         this.jobs.error = errorMessage(error);
@@ -321,6 +337,10 @@ export class JobOrchestrator {
       await this.startOcrIndex(
         pending.params.root,
         pending.params.scan?.retryFailed ?? pending.params.scan?.force,
+        {
+          ocr: pending.params.ocr ?? true,
+          image: pending.params.image ?? pending.params.embed ?? true,
+        },
       );
     else await this.startResumableJob(pending.params.root, pending);
   }

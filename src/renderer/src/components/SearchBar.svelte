@@ -19,7 +19,7 @@
   import { parseVisualTextTerms, type VisualReferenceTerm } from "../lib/visual-query";
   import VisualSearchComposer from "./VisualSearchComposer.svelte";
   const {
-    services: { runtime },
+    services: { runtime, catalog },
   } = useApplication();
 
   // The match count used to sit at the right of the field; it lives in the status bar's items
@@ -29,8 +29,10 @@
     composerOpen = $bindable(false),
     message,
     infoNotice,
+    textSetupRequired = false,
     semanticSuggestion = false,
     onsemanticsearch,
+    onsetuptextsearch,
     visualReferences = [],
     onvisualreferenceschange,
     onchoosevisualfile,
@@ -42,8 +44,10 @@
     composerOpen?: boolean;
     message?: string | null;
     infoNotice?: string | null;
+    textSetupRequired?: boolean;
     semanticSuggestion?: boolean;
     onsemanticsearch?: () => void;
+    onsetuptextsearch: () => void;
     visualReferences?: VisualReferenceTerm[];
     onvisualreferenceschange?: (references: VisualReferenceTerm[]) => void;
     onchoosevisualfile?: () => void;
@@ -78,6 +82,14 @@
       icon: Search,
     },
     {
+      scope: "like",
+      label: "Visual search",
+      menuLabel: "Visual search",
+      prefix: "like:",
+      summary: "Find images using descriptions or example images",
+      icon: ScanEye,
+    },
+    {
       scope: "name",
       label: "Name",
       menuLabel: "File name",
@@ -101,14 +113,6 @@
       prefix: "meaning:",
       summary: "Text found in pictures, matched by meaning instead of spelling",
       icon: TextSearch,
-    },
-    {
-      scope: "like",
-      label: "Visual search",
-      menuLabel: "Visual search",
-      prefix: "like:",
-      summary: "Find images using descriptions or example images",
-      icon: ScanEye,
     },
   ];
 
@@ -144,6 +148,20 @@
   const exampleCount = $derived(parseVisualTextTerms(parsed.body).length + visualReferences.length);
   const selectedScope = $derived(
     scopeOptions.find((option) => option.scope === parsed.scope) ?? scopeOptions[0],
+  );
+  const noOcr = $derived(
+    Boolean(
+      catalog.selectedStatus &&
+      !catalog.selectedStatus.loading &&
+      !catalog.selectedStatus.error &&
+      (catalog.selectedStatus.indexed === 0 ||
+        (parsed.scope === "meaning" && catalog.selectedStatus.embedded === 0)),
+    ),
+  );
+  const ocrNotice = $derived(
+    (noOcr || textSetupRequired) && (parsed.scope === "ocr" || parsed.scope === "meaning")
+      ? "Text search hasn’t been set up for this library."
+      : "",
   );
   const ScopeIcon = $derived(selectedScope.icon);
   /**
@@ -426,10 +444,15 @@
         {#if messageHint}<span class="search-message-hint">{messageHint}</span>{/if}
       </div>
     </div>
-  {:else if infoNotice && !menuOpen}
+  {:else if (ocrNotice || infoNotice) && !menuOpen}
     <div class="search-message search-info" role="status">
       <Info size={12} aria-hidden="true" />
-      <span>{infoNotice}</span>
+      <span>{ocrNotice || infoNotice}</span>
+      {#if ocrNotice}
+        <button class="ui-button" type="button" onclick={onsetuptextsearch}
+          >Set up text search</button
+        >
+      {/if}
     </div>
   {/if}
 </div>

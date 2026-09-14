@@ -79,3 +79,28 @@ body {
   outline: var(--focus-ring);
   outline-offset: -3px;
 }
+
+/* Compact modal scrollbar. The track inherits the modal visually; it intentionally
+   differs from the gallery timeline following the user's scrollbar review. */
+.themed-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+.themed-scrollbar::-webkit-scrollbar-track,
+.themed-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.themed-scrollbar::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--border-strong);
+  background-clip: padding-box;
+}
+.themed-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-secondary);
+}
+.themed-scrollbar::-webkit-scrollbar-thumb:active {
+  background-color: var(--text-primary);
+}

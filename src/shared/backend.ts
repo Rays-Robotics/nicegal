@@ -4,11 +4,11 @@ export interface BackendStatus {
   ready: boolean;
   error: string | null;
   /** A deliberate provider fallback may resume the user's indexing intent once ready. */
-  restartReason?: "provider-fallback" | "model-change";
+  restartReason?: "provider-fallback" | "runtime-change";
 }
 
-/** `cpu` | `directml` | `openvino` — see `nicegal_core::runtime::ExecutionProvider`. */
-export type ExecutionProviderId = "cpu" | "directml" | "openvino";
+/** See `nicegal_core::runtime::ExecutionProvider`. */
+export type ExecutionProviderId = "cpu" | "directml" | "openvino" | "webgpu";
 
 export interface ImageModelStatus {
   activeModel: string;
@@ -30,6 +30,7 @@ export interface ImageModelStatus {
  * persisted choice for its next launch. They differ right after a change, since the server never
  * replaces its already-loaded runtime in place. */
 export interface RuntimeStatus {
+  availableExecutionProviders?: ExecutionProviderId[];
   imageModel: ImageModelStatus;
   activeExecutionProvider: string;
   activeRuntimeDistribution: string;
@@ -230,6 +231,7 @@ export interface JobItemError {
 }
 
 export interface JobSnapshot {
+  indexStages?: { ocr: boolean; image: boolean; text: boolean };
   jobId: string;
   type:
     | "ocrModelLoad"
@@ -248,10 +250,18 @@ export interface JobSnapshot {
   error?: string;
 }
 
+export interface IndexSelection {
+  ocr: boolean;
+  image: boolean;
+}
+
 export interface OcrIndexJobRequest {
   type: "ocrIndex";
   params: {
     root: string;
+    /** Select text recognition and image search independently; both default to true. */
+    ocr?: boolean;
+    image?: boolean;
     /** Continue into pending CLIP-image and OCR-text embeddings after OCR (default true backend-side). */
     embed?: boolean;
     scan?: {

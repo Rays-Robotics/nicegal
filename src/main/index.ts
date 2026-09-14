@@ -57,8 +57,8 @@ const backendContext = {
     return backendClient;
   },
   isTrustedSender: isTrustedRenderer,
-  restartForModelChange: async (): Promise<void> => {
-    backendStatus.restartReason = "model-change";
+  restartForRuntimeChange: async (): Promise<void> => {
+    backendStatus.restartReason = "runtime-change";
     try {
       await shutdownBackend();
       if (shutdownStarted) throw new Error("The app is closing");

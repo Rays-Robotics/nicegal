@@ -48,9 +48,10 @@ export function buildLayout(
         label: section.label,
         count: section.count,
         status: section.status,
+        collapsed: section.collapsed,
       });
       const part = buildLayout(
-        items.slice(section.start, section.start + section.count),
+        section.collapsed ? [] : items.slice(section.start, section.start + section.count),
         viewportWidth,
         { ...options, granularity: "none" },
       );
@@ -76,9 +77,10 @@ export function buildLayout(
         for (const bottom of column.bottoms) target.bottoms.push(bottom + offset);
       });
       result.unitHeight = part.unitHeight || result.unitHeight;
-      result.height = section.count
-        ? offset + part.height - resolved.padding + sectionGap
-        : headerY + sectionHeaderHeight + sectionGap;
+      result.height =
+        !section.collapsed && section.count
+          ? offset + part.height - resolved.padding + sectionGap
+          : headerY + sectionHeaderHeight + sectionGap;
     }
     return result;
   }

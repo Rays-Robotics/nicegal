@@ -10,7 +10,7 @@ const vite = await createServer({
   configFile: false,
   cacheDir: "node_modules/.vite-search-tests",
   plugins: [svelte()],
-  server: { middlewareMode: true, hmr: false, watch: null },
+  server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   appType: "custom",
 });
 after(() => vite.close());

@@ -13,7 +13,8 @@ const vite = await createServer({
   configFile: false,
   cacheDir: "node_modules/.vite-indexing-tests",
   plugins: [svelte()],
-  server: { middlewareMode: true },
+  optimizeDeps: { noDiscovery: true, include: [] },
+  server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   appType: "custom",
 });
 after(() => vite.close());
@@ -197,4 +198,42 @@ test("Stop before the start response cancels the accepted backend job", async ()
   assert.deepEqual(cancelled, ["accepted"]);
   assert.equal(tracker.running, false);
   tracker.dispose();
+});
+
+for (const selection of [
+  { ocr: true, image: false },
+  { ocr: false, image: true },
+]) {
+  test(`index selection ${JSON.stringify(selection)} survives model preparation and fallback`, async () => {
+    const f = fixture([snapshot("ocrModelLoad", "completed"), snapshot("ocrIndex", "running")]);
+    await f.orchestrator.startOcrIndex("C:/photos", true, selection);
+    await flush();
+    assert.equal(f.disconnect(), true);
+    await f.orchestrator.backendReady();
+    assert.equal(f.requests.length, 2);
+    for (const request of f.requests) {
+      assert.equal(request.type, "ocrIndex");
+      const params = (request as Extract<JobRequest, { type: "ocrIndex" }>).params;
+      assert.equal(params.ocr, selection.ocr);
+      assert.equal(params.image, selection.image);
+      assert.equal(params.scan?.retryFailed, true);
+    }
+  });
+  test(`index selection ${JSON.stringify(selection)} survives app restart`, async () => {
+    const f = fixture([snapshot("ocrIndex", "running"), snapshot("ocrIndex", "running")]);
+    await f.orchestrator.startOcrIndex("C:/other-library", false, selection);
+    f.disconnect(false);
+    await f.orchestrator.resumeInterruptedJob();
+    assert.equal(f.requests.length, 2);
+    const params = (f.requests[1] as Extract<JobRequest, { type: "ocrIndex" }>).params;
+    assert.equal(params.ocr, selection.ocr);
+    assert.equal(params.image, selection.image);
+  });
+}
+
+test("no selected search types cannot start a job", async () => {
+  const f = fixture([]);
+  await f.orchestrator.startOcrIndex("C:/photos", false, { ocr: false, image: false });
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.orchestrator.indexing, false);
 });

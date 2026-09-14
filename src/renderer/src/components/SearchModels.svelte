@@ -180,102 +180,99 @@
   {#if runtime.imageModelError}<p class="model-error" role="alert">
       {runtime.imageModelError}
     </p>{/if}
-  <p>
-    Find words, meaning and similar pictures. Indexing sets this up automatically, or you can do it
-    here.
-  </p>
-  <p class="setup-status" role="status">
-    {#if settingUp}Setting up search…{:else if ready}Search is ready{:else if failed}Search setup
-      needs attention{:else if stopped}Setup stopped{:else}Search models load when needed{/if}
-  </p>
-  {#if download && downloadProgress}
-    <div class="model-download">
-      <p class="model-download-name">Downloading: <strong>{download.modelId}</strong></p>
-      <p class="model-download-file">{download.filename}</p>
-      <div
-        class="model-download-track"
-        role="progressbar"
-        aria-label={`Downloading ${download.filename}`}
-        aria-valuemin="0"
-        aria-valuemax="100"
-        aria-valuenow={downloadPercent}
-        aria-valuetext={downloadProgress.text}
-      >
-        <span
-          class:indeterminate={downloadPercent === undefined}
-          style:width={downloadPercent === undefined ? "35%" : `${downloadPercent}%`}
-        ></span>
-      </div>
-      <p class="model-download-value">
-        {downloadProgress.text}{downloadPercent !== undefined ? ` · ${downloadPercent}%` : ""}
-      </p>
-    </div>
-  {:else if settingUp && setupJob}
-    <p>{jobLabel(setupJob)} {jobPhaseProgress(setupJob).text}</p>
-  {/if}
-  {#if currentSetupModel}
-    <p class="current-model" role="status">
-      {setupJob?.phase === "downloadingModels" ? "Downloading" : "Preparing"}:
-      <strong>{currentSetupModel}</strong>
-      {#if setupJob?.type === "modelPrepare"}<span> (may download model files)</span>{/if}
+  <section class="model-setup" aria-labelledby="model-setup-title">
+    <h3 id="model-setup-title">Model setup</h3>
+    <p>
+      Models download automatically when you index. You can also prepare all models here, including
+      optional text recognition.
     </p>
-  {/if}
-  {#if setupJob?.status === "cancelling"}<p>
-      Stopping after the current download or model finishes. Completed downloads will be kept.
-    </p>{/if}
-  {#if failed}<p>
-      Setup could not finish. Review model details below, check your connection and disk space, then
-      try again.
-    </p>{/if}
-  <div class="model-actions">
-    {#if settingUp}
-      <button
-        class="ui-button"
-        disabled={!jobs.running || setupJob?.status === "cancelling"}
-        onclick={() => orchestrator.cancel()}>Stop setup</button
-      >
-    {:else if !ready}
-      <button
-        class="ui-button"
-        disabled={jobs.running || !catalog.backendStatus.ready}
-        onclick={() => orchestrator.prepareSearchModels()}
-        >{failed ? "Try setup again" : stopped ? "Continue setup" : "Set up search"}</button
-      >
+    {#if settingUp || ready || failed || stopped}
+      <p class="setup-status" role="status">
+        {#if settingUp}Setting up search…{:else if failed}Search setup needs attention{:else if ready}All
+          models are ready{:else}Setup stopped{/if}
+      </p>
     {/if}
-  </div>
-  <p>
-    First-time setup downloads search models and may take a few minutes. Downloaded files are
-    reused. Your pictures stay on this computer.
-  </p>
-  <details open={failed}>
-    <summary>Model details</summary>
-    <dl>
-      <div>
-        <dt>OCR text recognition</dt>
-        <dd>{runtime.ocrLoaded ? "Ready" : "Not loaded this session"}</dd>
-      </div>
-      {#each names as model (model.key)}
-        {@const status = runtime.models?.[model.key]}
-        <div>
-          <dt>{model.label}</dt>
-          <dd>{status ? labels[status.state] : "Status unavailable"}</dd>
+    {#if download && downloadProgress}
+      <div class="model-download">
+        <p class="model-download-name">Downloading: <strong>{download.modelId}</strong></p>
+        <p class="model-download-file">{download.filename}</p>
+        <div
+          class="model-download-track"
+          role="progressbar"
+          aria-label={`Downloading ${download.filename}`}
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow={downloadPercent}
+          aria-valuetext={downloadProgress.text}
+        >
+          <span
+            class:indeterminate={downloadPercent === undefined}
+            style:width={downloadPercent === undefined ? "35%" : `${downloadPercent}%`}
+          ></span>
         </div>
-        {#if status?.error}<div class="model-error" role="alert">
-            {cleanDiagnostic(status.error)}
-          </div>{/if}
-      {/each}
-    </dl>
-    {#if runtime.modelError}<p class="model-error" role="alert">{runtime.modelError}</p>{/if}
-    {#if jobs.active && (jobs.active.type === "modelPrepare" || jobs.active.type === "ocrModelLoad")}
-      {#if jobs.active.error}<p class="model-error" role="alert">
-          {cleanDiagnostic(jobs.active.error)}
-        </p>{/if}
-      {#if jobs.active.status === "cancelled"}<p>
-          Preparation cancelled. You can retry; completed downloads remain cached.
-        </p>{/if}
+        <p class="model-download-value">
+          {downloadProgress.text}{downloadPercent !== undefined ? ` · ${downloadPercent}%` : ""}
+        </p>
+      </div>
+    {:else if settingUp && setupJob}
+      <p>{jobLabel(setupJob)} {jobPhaseProgress(setupJob).text}</p>
     {/if}
-    {#if jobs.error}<p class="model-error" role="alert">{jobs.error}</p>{/if}
-  </details>
+    {#if currentSetupModel}
+      <p class="current-model" role="status">
+        {setupJob?.phase === "downloadingModels" ? "Downloading" : "Preparing"}:
+        <strong>{currentSetupModel}</strong>
+      </p>
+    {/if}
+    {#if setupJob?.status === "cancelling"}<p>
+        Stopping after the current download or model finishes. Completed downloads will be kept.
+      </p>{/if}
+    {#if failed}<p>Setup could not finish. Check Model status below, then try again.</p>{/if}
+    <div class="model-actions">
+      {#if settingUp}
+        <button
+          class="ui-button"
+          disabled={!jobs.running || setupJob?.status === "cancelling"}
+          onclick={() => orchestrator.cancel()}>Stop setup</button
+        >
+      {:else if !ready}
+        <button
+          class="ui-button"
+          disabled={jobs.running || !catalog.backendStatus.ready}
+          onclick={() => orchestrator.prepareSearchModels()}
+          >{failed ? "Try setup again" : stopped ? "Continue setup" : "Set up all models"}</button
+        >
+      {/if}
+    </div>
+    <details open={failed}>
+      <summary>Model status</summary>
+      <dl>
+        <div>
+          <dt>OCR text recognition</dt>
+          <dd>{runtime.ocrLoaded ? "Ready" : "Not loaded this session"}</dd>
+        </div>
+        {#each names as model (model.key)}
+          {@const status = runtime.models?.[model.key]}
+          <div>
+            <dt>{model.label}</dt>
+            <dd>{status ? labels[status.state] : "Status unavailable"}</dd>
+          </div>
+          {#if status?.error}<div class="model-error" role="alert">
+              {cleanDiagnostic(status.error)}
+            </div>{/if}
+        {/each}
+      </dl>
+      {#if runtime.modelError}<p class="model-error" role="alert">{runtime.modelError}</p>{/if}
+      {#if jobs.active && (jobs.active.type === "modelPrepare" || jobs.active.type === "ocrModelLoad")}
+        {#if jobs.active.error}<p class="model-error" role="alert">
+            {cleanDiagnostic(jobs.active.error)}
+          </p>{/if}
+        {#if jobs.active.status === "cancelled"}<p>
+            Preparation cancelled. You can retry; completed downloads remain cached.
+          </p>{/if}
+      {/if}
+      {#if jobs.error}<p class="model-error" role="alert">{jobs.error}</p>{/if}
+    </details>
+  </section>
 </section>
 
 <style>

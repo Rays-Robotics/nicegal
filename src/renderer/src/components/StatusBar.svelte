@@ -59,6 +59,7 @@
     cpu: "CPU",
     directml: "DirectML",
     openvino: "OpenVINO",
+    webgpu: "WebGPU",
   };
 
   const providerText = $derived(
@@ -89,7 +90,7 @@
     ) {
       return `Running on ${active}; ${launched.activeExecutionProvider} failed to load and fell back automatically`;
     }
-    return `OCR execution provider: ${active}`;
+    return `Execution provider: ${active}`;
   });
 
   const fullDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -109,7 +110,7 @@
   );
 
   const indexRateText = $derived(
-    indexRate === null
+    !indexingRunning || indexRate === null
       ? null
       : `${indexRate.toLocaleString(undefined, { maximumFractionDigits: 1 })} images/s`,
   );
@@ -118,15 +119,19 @@
   const lastIndexed = $derived(
     status?.lastIndexedAt != null ? new Date(status.lastIndexedAt * 1000) : null,
   );
-  const indexText = $derived(
-    status
-      ? `${status.indexed.toLocaleString()} / ${status.cataloged.toLocaleString()} indexed` +
-          (indexRateText ? ` · ${indexRateText}` : "")
+  const indexCounts = $derived(
+    status && !status.error && status.indexed > 0
+      ? `${status.indexed.toLocaleString()} / ${status.cataloged.toLocaleString()} with text`
       : "",
   );
+  // Live throughput belongs to the job, not the last saved coverage snapshot. Fresh OCR
+  // libraries may still report zero indexed files until the job finishes.
+  const indexText = $derived([indexCounts, indexRateText].filter(Boolean).join(" · "));
   const indexTitle = $derived.by(() => {
-    if (!status) return undefined;
-    const counts = `OCR ${status.indexed.toLocaleString()} / ${status.cataloged.toLocaleString()} · Meaning ${status.embedded.toLocaleString()} / ${status.indexed.toLocaleString()} · ${status.pending.toLocaleString()} not embedded — details in Libraries`;
+    const counts =
+      status && !status.error
+        ? `OCR ${status.indexed.toLocaleString()} / ${status.cataloged.toLocaleString()} · Meaning ${status.embedded.toLocaleString()} / ${status.indexed.toLocaleString()} · ${status.pending.toLocaleString()} not embedded — details in Libraries`
+        : "";
     const activity = indexingRunning
       ? indexRateText
         ? `Indexing active · ${indexRateText}`
@@ -135,7 +140,7 @@
     const date = lastIndexed
       ? `\nNewest indexed file: ${fullDateFormatter.format(lastIndexed)}`
       : "";
-    return `${counts} · ${activity}${date}`;
+    return [counts, activity].filter(Boolean).join(" · ") + date;
   });
 </script>
 
@@ -166,10 +171,8 @@
     ></span>Searching…{:else}{message ?? ""}{/if}
 </span>
 {#if hasLibrary}
-  <!-- A zero `cataloged` is either an unread status or an empty library; neither has an index
-       reading worth a `0 / 0`. Kept right-aligned so the indexing activity has room without
-       crowding library, match, and selection totals. -->
-  {#if status && !status.error && status.cataloged > 0}
+  <!-- Keep live throughput visible even before OCR coverage arrives or if its refresh fails. -->
+  {#if indexText}
     <span class="status-segment count index-status" title={indexTitle}>
       <span class:active={indexingRunning} class="index-activity-indicator" aria-hidden="true"
       ></span>{indexText}

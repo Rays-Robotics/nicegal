@@ -14,6 +14,7 @@ import type {
   SearchRequest,
   ThumbnailJobRequest,
   Timeline,
+  RuntimeStatus,
 } from "../../shared/backend";
 import type { NicegalServerClient } from "./nicegal-server-client";
 
@@ -24,7 +25,7 @@ interface BackendIpcContext {
   status: BackendStatus;
   client: NicegalServerClient | null;
   isTrustedSender: IpcSenderValidator;
-  restartForModelChange: () => Promise<void>;
+  restartForRuntimeChange: () => Promise<void>;
 }
 
 interface JobSubscription {
@@ -87,21 +88,28 @@ export function registerBackendIpc(context: BackendIpcContext): void {
   };
 
   handleTrustedIpc(IPC_CHANNELS.backend.status, context.isTrustedSender, () => context.status);
-  let changingModel = false;
+  let changingRuntime = false;
+  let startingJobs = 0;
+  const changeRuntime = async (
+    update: (client: NicegalServerClient) => Promise<RuntimeStatus>,
+  ): Promise<RuntimeStatus> => {
+    if (changingRuntime) throw new Error("Search settings change already in progress");
+    if (startingJobs > 0) throw new Error("A job is starting; try again when it finishes");
+    changingRuntime = true;
+    try {
+      const status = await update(requireBackend());
+      if (status.restartRequired) await context.restartForRuntimeChange();
+      return await requireBackend().getRuntimeStatus();
+    } finally {
+      changingRuntime = false;
+    }
+  };
   handleTrustedIpc(
     IPC_CHANNELS.backend.setImageModel,
     context.isTrustedSender,
     async (_event, model: unknown) => {
       if (typeof model !== "string" || model.length > 200) throw new Error("Invalid image model");
-      if (changingModel) throw new Error("Image model change already in progress");
-      changingModel = true;
-      try {
-        const status = await requireBackend().setImageModel(model);
-        if (status.imageModel.restartRequired) await context.restartForModelChange();
-        return await requireBackend().getRuntimeStatus();
-      } finally {
-        changingModel = false;
-      }
+      return changeRuntime((client) => client.setImageModel(model));
     },
   );
   handleTrustedIpc(IPC_CHANNELS.backend.getRuntimeStatus, context.isTrustedSender, () =>
@@ -111,7 +119,8 @@ export function registerBackendIpc(context: BackendIpcContext): void {
     IPC_CHANNELS.backend.setExecutionProvider,
     context.isTrustedSender,
     (_event, value: unknown) => {
-      return requireBackend().setExecutionProvider(validateExecutionProvider(value));
+      const provider = validateExecutionProvider(value);
+      return changeRuntime((client) => client.setExecutionProvider(provider));
     },
   );
   handleTrustedIpc(
@@ -169,7 +178,10 @@ export function registerBackendIpc(context: BackendIpcContext): void {
     if (searchSession === undefined) {
       abortSearches(searches);
     } else {
-      if (searchSession < searches.session || (searchSession === searches.session && searches.closed)) {
+      if (
+        searchSession < searches.session ||
+        (searchSession === searches.session && searches.closed)
+      ) {
         throw new DOMException("Search session was superseded", "AbortError");
       }
       if (searchSession > searches.session) {
@@ -205,9 +217,19 @@ export function registerBackendIpc(context: BackendIpcContext): void {
       return requireBackend().ensureThumbnails(request);
     },
   );
-  handleTrustedIpc(IPC_CHANNELS.backend.startJob, context.isTrustedSender, (_event, value) => {
-    return requireBackend().startJob(validateJobRequest(value));
-  });
+  handleTrustedIpc(
+    IPC_CHANNELS.backend.startJob,
+    context.isTrustedSender,
+    async (_event, value) => {
+      if (changingRuntime) throw new Error("Search settings change already in progress");
+      startingJobs += 1;
+      try {
+        return await requireBackend().startJob(validateJobRequest(value));
+      } finally {
+        startingJobs -= 1;
+      }
+    },
+  );
   handleTrustedIpc(IPC_CHANNELS.backend.cancelJob, context.isTrustedSender, (_event, value) => {
     return requireBackend().cancelJob(validateJobId(value));
   });
@@ -281,7 +303,7 @@ function validateAbsoluteRoot(value: unknown): string {
 }
 
 function validateExecutionProvider(value: unknown): ExecutionProviderId {
-  if (value !== "cpu" && value !== "directml" && value !== "openvino") {
+  if (value !== "cpu" && value !== "directml" && value !== "openvino" && value !== "webgpu") {
     throw new TypeError("Invalid execution provider");
   }
   return value;
@@ -300,7 +322,9 @@ function validateSearchRequest(value: unknown): SearchRequest {
     (request.searchSession !== undefined &&
       (!Number.isSafeInteger(request.searchSession) || request.searchSession < 0)) ||
     (request.searchLane !== undefined &&
-      request.searchLane !== "literal" && request.searchLane !== "meaning" && request.searchLane !== "visual")
+      request.searchLane !== "literal" &&
+      request.searchLane !== "meaning" &&
+      request.searchLane !== "visual")
   ) {
     throw new TypeError("Invalid search session or lane");
   }
@@ -332,15 +356,39 @@ function validateSearchRequest(value: unknown): SearchRequest {
 }
 
 function validateImageQuery(value: unknown): boolean {
-  if (!isRecord(value) || !Array.isArray(value.components) || !value.components.length || value.components.length > 16) return false;
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.components) ||
+    !value.components.length ||
+    value.components.length > 16
+  )
+    return false;
   let imageBytes = 0;
   return value.components.every((component) => {
-    if (!isRecord(component) || typeof component.weight !== "number" || !Number.isFinite(component.weight) || component.weight === 0 || Math.abs(component.weight) > 100) return false;
-    const sources = Number("text" in component) + Number("assetId" in component) + Number("externalImage" in component);
+    if (
+      !isRecord(component) ||
+      typeof component.weight !== "number" ||
+      !Number.isFinite(component.weight) ||
+      component.weight === 0 ||
+      Math.abs(component.weight) > 100
+    )
+      return false;
+    const sources =
+      Number("text" in component) +
+      Number("assetId" in component) +
+      Number("externalImage" in component);
     if (sources !== 1) return false;
-    if (typeof component.text === "string") return component.text.trim().length > 0 && new TextEncoder().encode(component.text).length <= 4096;
-    if (typeof component.assetId === "number") return Number.isSafeInteger(component.assetId) && component.assetId > 0;
-    if (!isRecord(component.externalImage) || typeof component.externalImage.bytesBase64 !== "string") return false;
+    if (typeof component.text === "string")
+      return (
+        component.text.trim().length > 0 && new TextEncoder().encode(component.text).length <= 4096
+      );
+    if (typeof component.assetId === "number")
+      return Number.isSafeInteger(component.assetId) && component.assetId > 0;
+    if (
+      !isRecord(component.externalImage) ||
+      typeof component.externalImage.bytesBase64 !== "string"
+    )
+      return false;
     const bytes = component.externalImage.bytesBase64.length;
     imageBytes += bytes;
     return bytes > 0 && bytes <= 22_369_624 && imageBytes <= 44_739_248;
@@ -393,9 +441,18 @@ function validateJobRequest(value: unknown): JobRequest {
     return { type: "modelPrepare", params: {} };
   }
   if (request.type === "ocrIndex") {
-    const params = requireJobParams(value, ["root", "embed", "scan"], "Invalid OCR index job");
-    if (params.embed !== undefined && typeof params.embed !== "boolean") {
-      throw new TypeError("Invalid OCR index job");
+    const params = requireJobParams(
+      value,
+      ["root", "embed", "ocr", "image", "scan"],
+      "Invalid OCR index job",
+    );
+    for (const key of ["embed", "ocr", "image"] as const) {
+      if (params[key] !== undefined && typeof params[key] !== "boolean") {
+        throw new TypeError("Invalid index job");
+      }
+    }
+    if (params.ocr === false && (params.image ?? params.embed ?? true) === false) {
+      throw new TypeError("Select text recognition or image search");
     }
     const root = validateAbsoluteRoot(params.root);
     const scan = validateOcrIndexScan(params.scan);
@@ -404,6 +461,8 @@ function validateJobRequest(value: unknown): JobRequest {
       params: {
         root,
         ...(params.embed === undefined ? {} : { embed: params.embed as boolean }),
+        ...(params.ocr === undefined ? {} : { ocr: params.ocr as boolean }),
+        ...(params.image === undefined ? {} : { image: params.image as boolean }),
         ...(scan === undefined ? {} : { scan }),
       },
     };

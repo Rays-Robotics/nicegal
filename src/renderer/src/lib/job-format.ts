@@ -190,10 +190,8 @@ export const PHASES_BY_TYPE: Record<JobSnapshot["type"], readonly VisiblePhase[]
   ],
   ocrIndex: [
     { label: "Sync", backendPhases: ["scanning", "cataloging"] },
-    // `cleanup` runs after `ocr` and before both embedding phases. Folding it into OCR keeps the
-    // strip from either snapping back to "Sync" or jumping ahead before indexing has started.
-    { label: "OCR", backendPhases: ["ocr", "cleanup", "pruning"] },
     { label: "Images", backendPhases: ["imageEmbedding"] },
+    { label: "OCR", backendPhases: ["ocr", "cleanup", "pruning"] },
     { label: "Text", backendPhases: ["textEmbedding"] },
     { label: "Done", backendPhases: ["finished"] },
   ],
@@ -214,3 +212,21 @@ export const PHASES_BY_TYPE: Record<JobSnapshot["type"], readonly VisiblePhase[]
     { label: "Done", backendPhases: ["finished"] },
   ],
 };
+
+/** Older snapshots without a selection show every indexing stage. */
+export function jobPhases(job: JobSnapshot): readonly VisiblePhase[] {
+  const stages = job.indexStages;
+  if (job.type !== "ocrIndex" || !stages) return PHASES_BY_TYPE[job.type];
+  return PHASES_BY_TYPE.ocrIndex
+    .filter(
+      (phase) =>
+        (!phase.backendPhases.includes("ocr") || stages.ocr) &&
+        (!phase.backendPhases.includes("imageEmbedding") || stages.image) &&
+        (!phase.backendPhases.includes("textEmbedding") || stages.text),
+    )
+    .map((phase) =>
+      !stages.ocr && phase.backendPhases.includes("imageEmbedding")
+        ? { ...phase, backendPhases: [...phase.backendPhases, "pruning"] }
+        : phase,
+    );
+}

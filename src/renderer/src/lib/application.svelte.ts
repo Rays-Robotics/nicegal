@@ -11,7 +11,7 @@ import { JobOrchestrator } from "./job-orchestrator.svelte";
 import { JobTracker } from "./job-tracker.svelte";
 import { OcrSearchController } from "./ocr-search.svelte";
 import { RuntimeController } from "./runtime.svelte";
-import { settings } from "./settings.svelte";
+import { libraryIndexing, settings } from "./settings.svelte";
 
 type IndexBucket = 128 | 256 | 512 | 1024;
 
@@ -203,7 +203,9 @@ class Application implements ApplicationContext {
   private async startIndex(root: string, retryFailed = false): Promise<void> {
     const { jobs, orchestrator } = this.services;
     if (jobs.running || orchestrator.indexing || !root) return;
-    await orchestrator.startOcrIndex(root, retryFailed);
+    const { ocr, image } = libraryIndexing(get(settings), root);
+    if (!ocr && !image) return;
+    await orchestrator.startOcrIndex(root, retryFailed, { ocr, image });
   }
 
   private async startThumbnailBackfill(

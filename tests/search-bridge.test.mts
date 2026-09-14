@@ -17,7 +17,7 @@ const vite = await createServer({
       : undefined,
   }],
   ssr: { noExternal: ["electron"] },
-  server: { middlewareMode: true, hmr: false, watch: null },
+  server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   appType: "custom",
 });
 (globalThis as typeof globalThis & { __searchBridgeHandlers: typeof handlers }).__searchBridgeHandlers = handlers;
@@ -98,4 +98,42 @@ test("invalid transport metadata cannot cancel a valid active search", async () 
   assert.equal(calls[0].signal.aborted, false);
   calls[0].resolve({ total: 0, results: [] });
   await active;
+});
+
+test("index selections cross IPC intact and invalid selections are rejected", async () => {
+  const requests: unknown[] = [];
+  registerBackendIpc({
+    status: { ready: true, error: null },
+    isTrustedSender: () => true,
+    client: {
+      startJob: async (request: unknown) => {
+        requests.push(request);
+        return request;
+      },
+    },
+  });
+  const start = (params: Record<string, unknown>): Promise<unknown> =>
+    Promise.resolve().then(() =>
+      handlers.get("backend:start-job")!(
+        {},
+        {
+          type: "ocrIndex",
+          params: { root: process.cwd(), ...params },
+        },
+      ),
+    );
+  for (const selection of [
+    { ocr: true, image: false },
+    { ocr: false, image: true },
+  ]) {
+    await start(selection);
+    assert.deepEqual(requests.at(-1), {
+      type: "ocrIndex",
+      params: { root: process.cwd(), ...selection },
+    });
+  }
+  await assert.rejects(start({ ocr: false, image: false }), /Select/);
+  await assert.rejects(start({ ocr: "false" }), /Invalid/);
+  await assert.rejects(start({ image: 1 }), /Invalid/);
+  assert.equal(requests.length, 2);
 });

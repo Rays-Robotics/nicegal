@@ -5,7 +5,7 @@ import type { ExternalVisualReference } from "../../../shared/backend";
 import type { CatalogController } from "./catalog.svelte";
 import type { GallerySection } from "./gallery/types";
 
-import { searchErrorMessage } from "./errors";
+import { isQuerySyntaxError, searchErrorMessage } from "./errors";
 import { localDateToExclusiveNs, localDateToNs } from "./job-params";
 import { parseQuery, withScope, type DateFilter, type SearchScope } from "./search-query";
 import {
@@ -15,6 +15,28 @@ import {
 } from "./visual-query";
 
 type CatalogItem = CatalogController["items"][number];
+
+/** Validate before queueing a publication: malformed IPC responses must not poison a section
+ * or throw later when deferred results are applied after scrolling/selection ends. */
+function validateSearchResponse(response: SearchResponse): SearchResponse {
+  if (
+    !response ||
+    !Number.isSafeInteger(response.total) ||
+    response.total < 0 ||
+    !Array.isArray(response.results) ||
+    response.results.some(
+      (hit) =>
+        !hit ||
+        typeof hit.assetId !== "string" ||
+        typeof hit.snippet !== "string" ||
+        [hit.rank, hit.distance, hit.score].some(
+          (value) => value !== undefined && !Number.isFinite(value),
+        ),
+    )
+  )
+    throw new Error("Invalid search response");
+  return response;
+}
 
 /** Whether a query typed at this scope produces something a relevance order can be built from.
  * `name` is client-side substring matching — every hit is equally a hit, so there is nothing to
@@ -156,6 +178,7 @@ export class OcrSearchController {
   }
   error = $state("");
   indexNotice = $state("");
+  textSetupRequired = $state(false);
   /** Set only after the current query's coverage check confirms a semantic search can run. */
   semanticAvailable = $state(false);
   total = $state(0);
@@ -371,6 +394,7 @@ export class OcrSearchController {
     items: CatalogItem[],
     timeline: Timeline,
     supportsImageTextQueries = true,
+    hasOcr = true,
   ): void {
     if (this.timer) clearTimeout(this.timer);
     if (this.broadTimer) clearTimeout(this.broadTimer);
@@ -389,13 +413,14 @@ export class OcrSearchController {
       this.clipMatchQuality = DEFAULT_CLIP_MATCH_QUALITY;
     }
     const generation = ++this.generation;
-    const { scope, body: rawBody, dates, ocrMode } = parseQuery(this.query);
+    const { scope, body: rawBody, dates, ocrMode } = this.parsed;
     const body = normalizeSearchBody(scope, rawBody);
     const references = scope === "like" ? this.visualReferences : [];
     const composedVisual = scope === "like" && (isVisualComposition(body) || references.length > 0);
     const visualTerms = composedVisual ? parseVisualTextTerms(body) : [];
     this.error = "";
     this.indexNotice = "";
+    this.textSetupRequired = false;
     this.semanticAvailable = false;
     this.pending = false;
     this.snippets = new Map<string, string>();
@@ -427,9 +452,10 @@ export class OcrSearchController {
     // error state; one failed or unavailable engine must never discard successful sibling results.
     // The shared session cancels obsolete work; the renderer generation also guards late replies.
     if (scope === "all" && root && time !== null) {
-      this.broadPending = { meaning: true, visual: supportsImageTextQueries };
+      this.broadPending = { meaning: hasOcr, visual: supportsImageTextQueries };
       this.broadTimer = setTimeout(() => {
         for (const lane of ["meaning", "visual"] as const) {
+          if (lane === "meaning" && !hasOcr) continue;
           if (lane === "visual" && !supportsImageTextQueries) continue;
           void window.nicegal.backend
             .searchOcr({
@@ -442,6 +468,7 @@ export class OcrSearchController {
               searchSession,
               searchLane: lane,
             })
+            .then(validateSearchResponse)
             .then((response) =>
               this.publish(generation, () => {
                 if (generation !== this.generation) return;
@@ -452,8 +479,12 @@ export class OcrSearchController {
             )
             .catch((error: unknown) =>
               this.publish(generation, () => {
-                if (generation === this.generation)
-                  this.broadErrors[lane] = searchErrorMessage(error);
+                if (generation !== this.generation) return;
+                console.warn(`${lane} search failed`, error);
+                this.broadErrors[lane] =
+                  lane === "visual"
+                    ? "Visual search unavailable. Try again."
+                    : "Related text unavailable. Try again.";
               }),
             )
             .finally(() =>
@@ -475,7 +506,7 @@ export class OcrSearchController {
         this.matches = scope === "name" ? null : new Set<string>();
         this.total = scope === "name" ? this.filenameMatches.size : 0;
 
-        if (scope === "name") {
+        if (scope === "name" || (scope === "all" && !hasOcr)) {
           this.pending = false;
           return;
         }
@@ -540,6 +571,7 @@ export class OcrSearchController {
                   }
                 : {}),
             })
+            .then(validateSearchResponse)
             .then((response) =>
               this.publish(generation, () => {
                 if (generation !== this.generation) return;
@@ -564,7 +596,13 @@ export class OcrSearchController {
             )
             .catch((error: unknown) =>
               this.publish(generation, () => {
-                if (generation === this.generation) this.error = searchErrorMessage(error);
+                if (generation !== this.generation) return;
+                const message = searchErrorMessage(error);
+                console.warn("Search failed", error);
+                this.error =
+                  scope === "all" && !isQuerySyntaxError(message)
+                    ? "Text search unavailable. Try again."
+                    : message;
               }),
             )
             .finally(() =>
@@ -593,7 +631,8 @@ export class OcrSearchController {
             const notIndexed =
               scope === "meaning" ? response.embedded === 0 : response.indexed === 0;
             if (notIndexed) {
-              this.indexNotice = "This library is not indexed. Index it in Libraries.";
+              this.textSetupRequired = true;
+              this.indexNotice = "Text search hasn’t been set up for this library.";
               this.matches = new Set<string>();
               this.snippets = new Map<string, string>();
               this.total = this.filenameMatches?.size ?? 0;

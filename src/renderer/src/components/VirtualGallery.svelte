@@ -25,7 +25,7 @@
 -->
 <script lang="ts">
   import Video from "@lucide/svelte/icons/video";
-  import { onMount, tick, untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
   import type { SelectionModifiers } from "../lib/gallery/selection.svelte";
@@ -57,6 +57,7 @@
   let {
     items = [],
     sections = [],
+    ontogglesection = () => {},
     viewKey = "gallery",
     oninteractionchange = () => {},
     layoutOptions = {},
@@ -109,6 +110,7 @@
   }: {
     items?: GalleryItem[];
     sections?: readonly GallerySection[];
+    ontogglesection?: (key: string) => void;
     viewKey?: string;
     oninteractionchange?: (active: boolean) => void;
     layoutOptions?: LayoutOptions;
@@ -319,9 +321,7 @@
     ),
   );
 
-  // Four effects, each doing something an effect is actually needed for — none of them are a
-  // computation that could just be `$derived` instead. See the file header for the pool model;
-  // per-effect reasoning is inline below.
+  // Remaining effects synchronize the recycled DOM pool, scroll position, and external schedulers.
 
   /**
    * Recomputes the pool whenever anything that changes what should be visible changes. This has
@@ -400,7 +400,8 @@
    * hook into otherwise, since `layout` recomputes on its own via `$derived`.
    */
   $effect(() => {
-    onScroll({ scrollTop, layout });
+    const state = { scrollTop, layout };
+    untrack(() => onScroll(state));
   });
 
   let overscanController: ReturnType<typeof createOverscanController> | undefined;
@@ -553,7 +554,7 @@
   async function restoreAnchor(currentLayout: GalleryLayout): Promise<void> {
     const currentAnchor = untrack(() => anchor);
     const currentViewport = untrack(() => viewport);
-    if (!currentAnchor || !currentViewport || !currentLayout.positions.length) return;
+    if (!currentAnchor || !currentViewport) return;
     let nextScrollTop = 0;
     if (currentAnchor.kind === "section") {
       const section = currentLayout.dividers.find((divider) => divider.key === currentAnchor.key);
@@ -587,7 +588,7 @@
     if (Math.abs(scrollTop - previous) < 0.5) restoringAnchor = false;
   }
 
-  onMount(() => {
+  function attachViewport(element: HTMLDivElement): () => void {
     const updatePixelRatio = (): void => {
       pixelRatio = window.devicePixelRatio || 1;
     };
@@ -596,11 +597,11 @@
       viewportWidth = nextWidth;
       viewportHeight = entry.contentRect.height;
     });
-    observer.observe(viewport);
+    observer.observe(element);
     window.addEventListener("resize", updatePixelRatio);
     updatePixelRatio();
-    viewportWidth = viewport.clientWidth;
-    viewportHeight = viewport.clientHeight;
+    viewportWidth = element.clientWidth;
+    viewportHeight = element.clientHeight;
 
     const stopMedia = media.start();
 
@@ -610,7 +611,7 @@
       stopMedia();
       thumbnailScheduler.dispose();
     };
-  });
+  }
 </script>
 
 <svelte:window
@@ -625,6 +626,7 @@
   class={{ "gallery-viewport": true, "hide-native-scrollbar": hideNativeScrollbar }}
   bind:this={viewport}
   {@attach input.attach}
+  {@attach attachViewport}
   {onscroll}
   onpointerdown={(event) => {
     oninteractionchange(true);
@@ -722,11 +724,27 @@
           ? `${layoutOptions.padding ?? layoutDefaults.padding}px`
           : undefined}
       >
-        {divider.label}
-        {#if divider.count !== undefined}<span class="section-count"
-            >({divider.count.toLocaleString()})</span
-          >{/if}
-        {#if divider.status}<span class="section-status">{divider.status}</span>{/if}
+        {#if divider.key}
+          <button
+            class="section-toggle"
+            type="button"
+            aria-expanded={!divider.collapsed}
+            aria-label={`${divider.collapsed ? "Expand" : "Collapse"} ${divider.label}`}
+            onpointerdown={(event) => event.stopPropagation()}
+            onpointerup={(event) => event.stopPropagation()}
+            onclick={() => {
+              anchor = { kind: "section", key: divider.key!, offset: scrollTop - divider.y };
+              ontogglesection(divider.key!);
+            }}
+          >
+            <span aria-hidden="true">{divider.collapsed ? "▸" : "▾"}</span>
+            {divider.label}
+            <span class="section-count">({divider.count?.toLocaleString() ?? 0})</span>
+            {#if divider.status}<span class="section-status">{divider.status}</span>{/if}
+          </button>
+        {:else}
+          {divider.label}
+        {/if}
       </div>
     {/each}
   </div>
@@ -739,6 +757,31 @@
     height: var(--search-section-height);
     visibility: hidden;
     pointer-events: none;
+  }
+  .section-toggle {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .section-toggle > span:first-child {
+    margin-right: var(--space-6);
+  }
+  .section-toggle:hover {
+    color: var(--accent-active);
+  }
+  .section-toggle:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: -2px;
   }
   .section-count {
     margin-left: var(--space-6);

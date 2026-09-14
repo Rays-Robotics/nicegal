@@ -44,6 +44,9 @@ export interface GallerySettings {
   playAnimatedPreviews: boolean;
   /** Development-only cap for each indexing phase. Zero indexes the complete library. */
   debugIndexLimit: number;
+  libraryIndexing: Record<string, { ocr: boolean; image: boolean }>;
+  indexOcr: boolean;
+  indexImage: boolean;
 }
 
 const defaults: GallerySettings = {
@@ -59,6 +62,9 @@ const defaults: GallerySettings = {
   gap: 10,
   playAnimatedPreviews: true,
   debugIndexLimit: 0,
+  libraryIndexing: {},
+  indexOcr: false,
+  indexImage: true,
 };
 
 export const settingsDefaults: Readonly<GallerySettings> = defaults;
@@ -149,6 +155,14 @@ function loadInitial(): GallerySettings {
       sortField,
       theme,
       dateHeaders,
+      libraryIndexing: Object.fromEntries(
+        Object.entries(parsed.libraryIndexing ?? {}).filter(
+          ([, value]) =>
+            value && typeof value.ocr === "boolean" && typeof value.image === "boolean",
+        ),
+      ),
+      indexOcr: typeof parsed.indexOcr === "boolean" ? parsed.indexOcr : true,
+      indexImage: typeof parsed.indexImage === "boolean" ? parsed.indexImage : true,
     });
   } catch {
     return defaults;
@@ -168,6 +182,32 @@ function createSettingsStore(): Writable<GallerySettings> {
 }
 
 export const settings = createSettingsStore();
+
+/** Registered library roots are canonical; Windows paths compare without case. */
+function indexingKey(root: string): string {
+  return typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
+    ? root.toLowerCase()
+    : root;
+}
+
+export function libraryIndexing(
+  value: GallerySettings,
+  root: string,
+): { ocr: boolean; image: boolean } {
+  return (
+    value.libraryIndexing[indexingKey(root)] ?? { ocr: value.indexOcr, image: value.indexImage }
+  );
+}
+
+export function setLibraryIndexing(
+  root: string,
+  selection: { ocr: boolean; image: boolean },
+): void {
+  settings.update((value) => ({
+    ...value,
+    libraryIndexing: { ...value.libraryIndexing, [indexingKey(root)]: selection },
+  }));
+}
 
 /** Maps the user-facing knobs onto the layout engine's options. */
 export function toLayoutOptions(value: GallerySettings): LayoutOptions {

@@ -66,7 +66,8 @@
   const executionProviders: { id: ExecutionProviderId; label: string }[] = [
     { id: "directml", label: "DirectML" },
     { id: "openvino", label: "OpenVINO (CPU)" },
-    { id: "cpu", label: "Legacy" },
+    { id: "webgpu", label: "WebGPU" },
+    { id: "cpu", label: "CPU" },
   ];
 
   async function setExecutionProvider(id: ExecutionProviderId): Promise<void> {
@@ -99,7 +100,7 @@
       <button class="ui-button" onclick={onclose}>Show error details</button>
     </div>
   {/if}
-  <div class="settings-groups">
+  <div class="settings-groups themed-scrollbar">
     {#if page === "gallery"}
       <section class="settings-group" aria-labelledby="appearance-title">
         <h2 id="appearance-title">Appearance</h2>
@@ -171,9 +172,7 @@
       <section class="settings-group" aria-labelledby="updates-title">
         <h2 id="updates-title">Updates</h2>
         <label class="row">
-          <span class="setting-label"
-            >Automatic updates</span
-          >
+          <span class="setting-label">Automatic updates</span>
           <input
             type="checkbox"
             checked={updatePreferences?.enabled ?? false}
@@ -190,24 +189,23 @@
       <AboutSettings />
     {:else}
       <SearchModels />
-      <details class="settings-group advanced-settings" open={Boolean(runtime.error)}>
-        <summary>Advanced search settings</summary>
+      <section class="settings-group advanced-settings" aria-labelledby="advanced-search-title">
+        <h2 id="advanced-search-title">Advanced search settings</h2>
         <div class="row segmented-row">
           <span class="setting-label"
             >Execution provider<small
-              >{runtime.status?.restartRequired
-                ? "Restart the app to apply."
-                : isLinux
-                  ? "OpenVINO (CPU) is the default. Leave this unless indexing fails."
-                  : "DirectML is the default. Leave this unless indexing fails."}</small
+              >{runtime.saving ? "Switching…" : "Leave this unless indexing fails."}</small
             ></span
           >
           <div class="segmented" aria-label="Execution provider">
-            {#each executionProviders.filter((provider) => !isLinux || provider.id !== "directml") as provider (provider.id)}
+            {#each executionProviders.filter( (provider) => (runtime.status?.availableExecutionProviders ?? (isLinux ? ["webgpu", "cpu"] : ["directml", "openvino", "cpu"])).includes(provider.id) ) as provider (provider.id)}
               <button
                 class={{ active: runtime.status?.configuredExecutionProvider === provider.id }}
                 aria-pressed={runtime.status?.configuredExecutionProvider === provider.id}
-                disabled={runtime.loading || runtime.saving}
+                disabled={runtime.loading ||
+                  runtime.saving ||
+                  runtime.imageModelSaving ||
+                  !catalog.backendStatus.ready}
                 onclick={() => setExecutionProvider(provider.id)}>{provider.label}</button
               >
             {/each}
@@ -229,7 +227,7 @@
             bind:value={$settings.debugIndexLimit}
           />
         </label>
-      </details>
+      </section>
     {/if}
   </div>
   <footer class="settings-help">
@@ -248,7 +246,7 @@
     display: flex;
     width: 100%;
     max-width: var(--dialog-width);
-    max-height: min(var(--dialog-max-height), calc(100vh - (var(--space-16) * 2)));
+    min-height: 0;
     flex-direction: column;
     padding: var(--space-16);
     overflow: hidden;
@@ -308,18 +306,6 @@
   }
   .advanced-settings {
     color: var(--text-primary);
-  }
-  .advanced-settings summary {
-    display: flex;
-    min-height: 32px;
-    align-items: center;
-    padding: var(--space-7) var(--space-9);
-    font-size: var(--font-size-md);
-    font-weight: var(--font-weight-semibold);
-    cursor: pointer;
-  }
-  .advanced-settings summary::marker {
-    color: var(--text-secondary);
   }
   h2 {
     padding: var(--space-7) var(--space-9);
@@ -398,10 +384,6 @@
   .segmented button:disabled {
     cursor: default;
     opacity: 0.5;
-  }
-  .advanced-settings summary:focus-visible {
-    outline: var(--focus-ring);
-    outline-offset: var(--focus-ring-offset);
   }
   .close-button {
     height: var(--control-height);

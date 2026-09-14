@@ -2,7 +2,7 @@
   import FolderOpen from "@lucide/svelte/icons/folder-open";
   import PanelRight from "@lucide/svelte/icons/panel-right";
   import Settings from "@lucide/svelte/icons/settings";
-  import { onMount } from "svelte";
+  import { onDestroy } from "svelte";
 
   import type { ExternalVisualReference } from "../../shared/backend";
 
@@ -42,7 +42,6 @@
   let gallery = $state<VirtualGallery>();
   const thumbnailFailures = $derived(gallery?.getThumbnailFailures(catalog.items) ?? []);
   let settingsPage = $state<"gallery" | "search" | "about">("gallery");
-  let galleryContainer = $state<HTMLDivElement>();
   const view = createLibraryViewController(application, (y) => gallery?.scrollTo(y));
   const inspectedAsset = $derived(
     view.detailItem ??
@@ -94,16 +93,16 @@
     }
   }
 
-  onMount(() => {
+  function observeGallery(element: HTMLDivElement): () => void {
     const observer = new ResizeObserver(([entry]) => {
       view.galleryScroll.height = entry.contentRect.height;
     });
-    observer.observe(galleryContainer);
+    observer.observe(element);
     return () => {
       observer.disconnect();
-      view.dispose();
     };
-  });
+  }
+  onDestroy(() => view.dispose());
 </script>
 
 <svelte:window
@@ -150,8 +149,10 @@
         bind:composerOpen={ocrSearch.composerOpen}
         message={ocrSearch.queryHint || (ocrSearch.allMode ? "" : ocrSearch.error)}
         infoNotice={ocrSearch.allMode ? "" : ocrSearch.indexNotice}
+        textSetupRequired={ocrSearch.textSetupRequired}
         semanticSuggestion={ocrSearch.shouldSuggestSemantic}
         onsemanticsearch={view.switchToMeaningSearch}
+        onsetuptextsearch={view.openLibrariesDialog}
         visualReferences={ocrSearch.visualReferences}
         onvisualreferenceschange={(references) => ocrSearch.setVisualReferences(references)}
         onchoosevisualfile={() => void chooseVisualFile()}
@@ -229,12 +230,13 @@
 
 {#snippet workspace()}
   <div class="workspace-row">
-    <div class="content-row" bind:this={galleryContainer}>
+    <div class="content-row" {@attach observeGallery}>
       <div class="gallery-workspace" inert={Boolean(view.detailItem)}>
         <VirtualGallery
           bind:this={gallery}
           items={view.filteredItems}
           sections={view.searchView.sections}
+          ontogglesection={view.toggleSection}
           viewKey={ocrSearch.sortMode}
           oninteractionchange={(active) => ocrSearch.setInteracting(active)}
           layoutOptions={view.galleryLayoutOptions}
@@ -343,7 +345,7 @@
         libraryName={view.libraryName}
         libraryRoot={catalog.libraryRoot}
         hasLibrary={Boolean(catalog.libraryRoot)}
-        matchedCount={view.filteredItems.length}
+        matchedCount={view.searchView.matchTotal}
         totalCount={catalog.items.length}
         filtering={view.searchView.filtering}
         searching={ocrSearch.pending}
@@ -402,7 +404,7 @@
         <p id="welcome-splash-description">
           Browse picture folders and find images by name, text, or appearance.
         </p>
-        <ol>
+        <ol class="themed-scrollbar">
           <li>
             <strong>Add a folder, then enable search</strong>
             <span
@@ -410,8 +412,12 @@
               folders.</span
             >
             <span
-              >Choose <b>Enable search</b> in Libraries to index text and images. The first run downloads
-              search models; pictures are processed locally.</span
+              >Choose <b>Index</b> in Libraries to enable image search. The first run downloads search
+              models; pictures are processed locally.</span
+            >
+            <span
+              >You can also enable text search in Libraries for screenshots, scans, and other
+              pictures containing writing.</span
             >
           </li>
           <li>
@@ -420,27 +426,28 @@
               <img
                 src={searchMenuGuide}
                 width="216"
-                height="121"
-                alt="Search scope menu offering names, exact text, related text, and visual similarity"
+                height="125"
+                alt="Search menu with All, Visual search, and File name above Exact text and Related text"
               />
               <div>
                 <p>Choose a search type from the menu, or type a prefix:</p>
                 <ul class="search-types">
                   <li>
-                    <b>Exact text</b> (<code>ocr:</code>) — Find specific words written in images.
-                  </li>
-                  <li>
-                    <b>Related text</b> (<code>meaning:</code>) — Find writing with a similar
-                    meaning, even with different wording.
-                  </li>
-                  <li>
                     <b>Visual search</b> (<code>like:</code>) — Find images by appearance, concept,
                     or similarity to another image.
                   </li>
+                  <li>
+                    <b>Exact text</b> (<code>ocr:</code>) — Find specific words written in images
+                    <em>(requires OCR)</em>.
+                  </li>
+                  <li>
+                    <b>Related text</b> (<code>meaning:</code>) — Find writing with a similar
+                    meaning, even with different wording <em>(requires OCR)</em>.
+                  </li>
                 </ul>
                 <p>
-                  <b>All</b> shows names and exact text first, then the strongest related-text
-                  results, then visual results. Results appear as each search finishes.
+                  <b>All</b> searches file names and available visual results. With text
+                  recognition, it also includes exact text and related text.
                   <b>File name</b> searches names without indexing.
                 </p>
                 <p>
@@ -565,8 +572,11 @@
     min-width: 0;
   }
   .settings-dialog {
-    max-height: min(var(--dialog-max-height), 100%);
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    max-height: min(var(--dialog-max-height), calc(100vh - var(--space-16) * 2));
+    overflow: hidden;
     border: 1px solid var(--border-strong);
     background: var(--surface-0);
     box-shadow: var(--shadow-overlay);

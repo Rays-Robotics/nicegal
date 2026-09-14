@@ -132,3 +132,13 @@
     animation: none;
   }
 }
+
+.model-setup {
+  border-top: 1px solid var(--border-subtle);
+}
+.model-setup h3 {
+  margin: var(--space-8) var(--space-9) var(--space-4);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}

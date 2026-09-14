@@ -1,4 +1,5 @@
 import { tick, untrack } from "svelte";
+import { SvelteSet } from "svelte/reactivity";
 import { fromStore } from "svelte/store";
 
 import type { DetailViewStatus } from "../components/DetailView.svelte";
@@ -11,6 +12,7 @@ import type { SearchView } from "./ocr-search.svelte";
 import { rootsMatch } from "./catalog.svelte";
 import { errorMessage } from "./errors";
 import { GalleryScrollState } from "./gallery/scroll-state.svelte";
+import { collapseSearchSections } from "./gallery/search-sections";
 import { GallerySelection, type SelectionModifiers } from "./gallery/selection.svelte";
 import { isActiveJob } from "./job-state";
 import { withScope } from "./search-query";
@@ -31,6 +33,7 @@ export interface LibraryViewController {
   readonly indexingRunning: boolean;
   readonly detailItem: GalleryItem | undefined;
   readonly libraryName: string;
+  toggleSection(key: string): void;
   closeDialog(): void;
   startWelcomeLibraryPicker(): void;
   openLibrariesDialog(): void;
@@ -67,13 +70,34 @@ export function createLibraryViewController(
   // search; layout switches must retain the ranked results rather than clearing/requerying them.
   const searchTimeline = $derived(preferences.current.sortField);
   const supportsImageTextQueries = $derived(runtime.supportsImageTextQueries);
+  // Saving scroll position replaces the library registry, and status polls replace row objects.
+  // Only an actual change in OCR availability should restart the search. Keep the last count
+  // during status loading/errors rather than toggling engines for a transient refresh.
+  const hasOcr = $derived.by(() => {
+    const status = catalog.selectedStatus;
+    return !status || status.indexed > 0;
+  });
   const layoutPreferences = fromStore(layoutOptions);
   const galleryScroll = new GalleryScrollState();
-  const gallerySelection = new GallerySelection();
+  const searchIdentity = $derived(
+    [catalog.libraryRoot, ocrSearch.query, ocrSearch.visualReferenceRevision].join("\u0000"),
+  );
+  const gallerySelection = $derived.by(() => {
+    void searchIdentity;
+    return new GallerySelection();
+  });
+  // User overrides last for this query, including progressive arrivals and sort changes.
+  let collapsedSections = $derived.by(() => {
+    void searchIdentity;
+    return new SvelteSet<string>();
+  });
   let activeDialog = $state<"libraries" | "settings" | null>(null);
   // Progressive results may move an image between sections. The viewer follows its ID, not
   // whichever image later occupies the index that was clicked.
-  let detailId = $state<string | null>(null);
+  let detailId = $derived.by(() => {
+    void ocrSearch.composerOpen;
+    return null as string | null;
+  });
   const detailIndex = $derived.by(() => {
     if (detailId === null) return null;
     const index = filteredItems.findIndex((item) => item.id === detailId);
@@ -83,15 +107,12 @@ export function createLibraryViewController(
   let restoringLibraryView = Boolean(catalog.libraryRoot);
   let disposed = false;
   let cancelSearchWait: (() => void) | undefined;
-  let initialRestoreStarted = false;
   let libraryViewGeneration = 0;
   /** The generation that currently owns `GalleryScrollState`'s restore suppression. */
   let preparedLibraryViewRestoreGeneration: number | null = null;
   let viewStateSaveTimer: ReturnType<typeof setTimeout> | undefined;
-  /** New queries/references clear selection. Presentation-only changes and progressive arrivals
-   * retain IDs, independently of the current result ordering or layout. */
-  let selectionSearchKey: string | undefined;
-  const searchView = $derived(ocrSearch.apply(catalog.items));
+  const fullSearchView = $derived(ocrSearch.apply(catalog.items));
+  const searchView = $derived(collapseSearchSections(fullSearchView, collapsedSections));
   const filteredItems = $derived(searchView.items);
   /** Stable until the current search result changes; marquee moves must not rebuild this per event. */
   const filteredItemIds = $derived(filteredItems.map((item) => item.id));
@@ -116,10 +137,6 @@ export function createLibraryViewController(
   const indexingRunning = $derived(jobs.active?.type === "ocrIndex" && isActiveJob(jobs.active));
   /** `undefined` (out-of-range index, e.g. the filter changed while open) closes the detail view. */
   const detailItem = $derived(detailIndex !== null ? filteredItems[detailIndex] : undefined);
-  $effect(() => {
-    // Native image-search actions also work from the detail view, where the toolbar is hidden.
-    if (ocrSearch.composerOpen) detailId = null;
-  });
   const libraryName = $derived(
     catalog.libraryRoot
       ? (catalog.libraryRoot.split(/[\\/]/).pop() ?? catalog.libraryRoot)
@@ -129,7 +146,7 @@ export function createLibraryViewController(
     const root = catalog.libraryRoot;
     const query = ocrSearch.query;
     const visualReferenceRevision = ocrSearch.visualReferenceRevision;
-    const scrollTop = galleryScroll.scrollTop;
+    const scrollTop = untrack(() => galleryScroll.scrollTop);
     if (!root || restoringLibraryView) return;
     void visualReferenceRevision;
     scheduleLibraryViewState(root, query, scrollTop);
@@ -145,32 +162,29 @@ export function createLibraryViewController(
       return;
     }
     void visualReferenceRevision;
-    untrack(() => ocrSearch.schedule(root, items, timeline, supportsImageTextQueries));
+    const ocrAvailable = hasOcr;
+    const imageTextAvailable = supportsImageTextQueries;
+    untrack(() => ocrSearch.schedule(root, items, timeline, imageTextAvailable, ocrAvailable));
   });
   $effect(() => {
     const catalogItems = catalog.items;
     untrack(() => gallerySelection.retainCatalogAssets(catalogItems));
   });
   $effect(() => {
-    const key = [ocrSearch.query, catalog.libraryRoot, ocrSearch.visualReferenceRevision].join(
-      "\u0000",
-    );
-    if (selectionSearchKey !== undefined && key !== selectionSearchKey) gallerySelection.clear();
-    selectionSearchKey = key;
-  });
-  $effect(() => {
-    if (!application.initialized || initialRestoreStarted) return;
-    initialRestoreStarted = true;
-    const generation = beginLibraryViewRestore();
-    untrack(() => void restoreLibraryView(catalog.libraryRoot, generation));
-  });
-  $effect(() => {
-    if (application.librarySelectionRevision === 0) return;
+    if (!application.initialized) return;
+    void application.librarySelectionRevision;
     untrack(() => {
       const generation = beginLibraryViewRestore();
       void restoreLibraryView(catalog.libraryRoot, generation);
     });
   });
+  function toggleSection(key: string): void {
+    const next = new SvelteSet(collapsedSections);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    collapsedSections = next;
+    gallerySelection.retainCatalogAssets(filteredItems);
+  }
   function closeDialog(): void {
     activeDialog = null;
   }
@@ -184,8 +198,7 @@ export function createLibraryViewController(
   }
   function openSettingsDialog(): void {
     activeDialog = "settings";
-    if (catalog.backendStatus.ready && !runtime.status && !runtime.loading)
-      void runtime.refresh();
+    if (catalog.backendStatus.ready && !runtime.status && !runtime.loading) void runtime.refresh();
   }
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key !== "Escape") return;
@@ -243,6 +256,8 @@ export function createLibraryViewController(
   }
   function handleGalleryScroll(state: { scrollTop: number; layout: GalleryLayout }): void {
     galleryScroll.onScroll(state);
+    if (catalog.libraryRoot && !restoringLibraryView)
+      scheduleLibraryViewState(catalog.libraryRoot, ocrSearch.query, galleryScroll.scrollTop);
   }
   function handleSeek(y: number): void {
     scrollTo(y);
@@ -403,7 +418,9 @@ export function createLibraryViewController(
 
   return {
     galleryScroll,
-    gallerySelection,
+    get gallerySelection() {
+      return gallerySelection;
+    },
     get activeDialog() {
       return activeDialog;
     },
@@ -443,6 +460,7 @@ export function createLibraryViewController(
     set detailStatus(value: DetailViewStatus | null) {
       detailStatus = value;
     },
+    toggleSection,
     closeDialog,
     startWelcomeLibraryPicker,
     openLibrariesDialog,

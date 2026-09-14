@@ -91,7 +91,7 @@ test("quit awaits an in-flight provider fallback shutdown without respawning the
       },
     ],
     ssr: { noExternal: ["electron"] },
-    server: { middlewareMode: true, hmr: false, watch: null },
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: "custom",
   });
   t.after(() => vite.close());

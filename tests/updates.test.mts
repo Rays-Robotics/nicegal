@@ -100,7 +100,7 @@ const vite = await createServer({
     },
   ],
   ssr: { noExternal: ["electron", "electron-updater"] },
-  server: { middlewareMode: true, hmr: false, watch: null },
+  server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   appType: "custom",
 });
 after(() => vite.close());

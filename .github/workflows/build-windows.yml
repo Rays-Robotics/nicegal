@@ -77,7 +77,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libssl-dev libclang-dev cmake nasm
+          sudo apt-get install -y build-essential pkg-config libssl-dev libclang-dev cmake nasm libvulkan1
 
       - name: Setup MSVC
         if: runner.os == 'Windows'
@@ -140,8 +140,10 @@ jobs:
         if: runner.os == 'Windows'
         run: pnpm run build:backend:win
 
-      - name: Build nicegal-server (OpenVINO and CPU)
+      - name: Build nicegal-server (WebGPU and CPU)
         if: runner.os == 'Linux'
+        env:
+          NICEGAL_LINUX_PROVIDERS: webgpu
         run: pnpm run build:backend
 
       # Written into package.json rather than committed: electron-builder reads the version from

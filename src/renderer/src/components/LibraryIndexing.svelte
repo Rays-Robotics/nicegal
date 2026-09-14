@@ -5,19 +5,20 @@
   import { rootsMatch } from "../lib/catalog.svelte";
   import { cleanDiagnostic } from "../lib/errors";
   import { summarizeCompletion } from "../lib/job-format";
+  import { libraryIndexing, setLibraryIndexing, settings } from "../lib/settings.svelte";
   import JobProgress from "./JobProgress.svelte";
 
   let { root, children }: { root: string; children?: Snippet } = $props();
   const { services, commands } = useApplication();
   const { jobs, orchestrator, catalog } = services;
+  const selection = $derived(libraryIndexing($settings, root));
+  const hintId = $props.id();
   const busy = $derived(jobs.running || orchestrator.indexing);
   const ownsIndex = $derived(
     Boolean(orchestrator.indexRoot && rootsMatch(root, orchestrator.indexRoot)),
   );
   const ownsJob = $derived(Boolean(jobs.root && rootsMatch(root, jobs.root)));
   const job = $derived(ownsJob || (ownsIndex && orchestrator.indexing) ? jobs.active : null);
-  const status = $derived(catalog.libraryStatuses.get(root));
-  const hasIndex = $derived((status?.indexed ?? 0) > 0);
   const restarting = $derived(ownsIndex && orchestrator.restartingIndex);
   const error = $derived((ownsJob || ownsIndex ? jobs.error : "") || catalog.backendStatus.error);
   const diagnostic = $derived(
@@ -48,9 +49,8 @@
     <strong>Search</strong>
     <button
       class="ui-button"
-      disabled={!catalog.backendStatus.ready || busy}
-      onclick={() => commands.startIndex(root)}
-      >{hasIndex ? "Update index" : "Enable search"}</button
+      disabled={!catalog.backendStatus.ready || busy || (!selection.ocr && !selection.image)}
+      onclick={() => commands.startIndex(root)}>Index</button
     >
     {#if busy && (ownsJob || ownsIndex)}
       <button
@@ -60,10 +60,33 @@
       >
     {/if}
   </div>
+  <div class="index-options" role="group" aria-label="Search types for this library">
+    <label
+      ><input
+        type="checkbox"
+        checked={selection.image}
+        onchange={(event) =>
+          setLibraryIndexing(root, { ...selection, image: event.currentTarget.checked })}
+        disabled={busy}
+      /> Image search</label
+    >
+    <div class="text-recognition-option">
+      <label
+        ><input
+          type="checkbox"
+          checked={selection.ocr}
+          aria-describedby={hintId}
+          onchange={(event) =>
+            setLibraryIndexing(root, { ...selection, ocr: event.currentTarget.checked })}
+          disabled={busy}
+        /> Include text recognition</label
+      >
+      <p id={hintId}>10x slower then regular indexing, but good for precise text searches</p>
+    </div>
+  </div>
+  <p>Choices are saved for this library.</p>
   <p>
-    {hasIndex
-      ? "Update search for new and changed pictures. Deleted files are removed from the library automatically."
-      : "Enable text, meaning and image search. The first run downloads search models; your pictures are processed locally. You can browse without setting this up."}
+    Index new and changed pictures. The first run downloads models; pictures stay on your computer.
   </p>
   {#if restarting}
     <p role="status">Switching to CPU… Indexing will continue automatically.</p>
@@ -99,7 +122,7 @@
       <div>
         <button
           class="ui-button"
-          disabled={!catalog.backendStatus.ready || busy}
+          disabled={!catalog.backendStatus.ready || busy || (!selection.ocr && !selection.image)}
           onclick={() => commands.startIndex(root, true)}>Retry failed files</button
         >
         <p>Retry failed files while keeping successful results.</p>
@@ -124,6 +147,27 @@
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-6);
+  }
+  .index-options label {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+  }
+  .index-options {
+    display: grid;
+    gap: var(--space-6);
+  }
+  .text-recognition-option {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    row-gap: var(--space-3);
+  }
+  .text-recognition-option label {
+    grid-column: 1 / -1;
+  }
+  .text-recognition-option p {
+    grid-column: 2;
   }
   .index-actions strong {
     margin-right: auto;

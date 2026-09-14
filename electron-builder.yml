@@ -102,6 +102,7 @@ linux:
       filter:
         - nicegal-server
         - onnxruntime/openvino/*.so*
+        - onnxruntime/webgpu/*.so*
 appImage:
   artifactName: ${name}-${version}-linux-${arch}.${ext}
 deb:
@@ -114,6 +115,7 @@ deb:
     - libssl3t64
     - libasound2t64
     - libgbm1
+    - libvulkan1
     - libgtk-3-0t64
     - libnotify4
     - libnss3

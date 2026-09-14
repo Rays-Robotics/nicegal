@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { JobSnapshot } from "../../../shared/backend";
 
-  import { formatBytes, jobLabel, jobPhaseProgress, PHASES_BY_TYPE } from "../lib/job-format";
+  import { formatBytes, jobLabel, jobPhaseProgress, jobPhases } from "../lib/job-format";
   import { isTerminalJobStatus } from "../lib/job-state";
   import JobMetric from "./JobMetric.svelte";
 
@@ -9,7 +9,7 @@
 
   type ContextMetric = { label: string; value: string };
 
-  const phases = $derived(PHASES_BY_TYPE[job.type]);
+  const phases = $derived(jobPhases(job));
   // -1 (not found) is a real, valid result here — it means the current backend phase (e.g.
   // `queued`, or any phase not yet mapped for this job type) isn't one of the visible steps.
   // Leaving it as -1 rather than clamping to 0 means no step is marked current/complete, instead
