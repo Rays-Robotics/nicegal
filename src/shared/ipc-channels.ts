@@ -5,6 +5,7 @@ export const IPC_CHANNELS = {
     status: "updates:status",
     statusChanged: "updates:status-changed",
     releaseNotes: "updates:release-notes",
+    restartAndInstall: "updates:restart-and-install",
   },
   backend: {
     status: "backend:status",

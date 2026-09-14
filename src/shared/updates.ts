@@ -14,4 +14,5 @@ export interface UpdateBridge {
   getStatus(): Promise<UpdateStatus>;
   onStatusChanged(listener: (status: UpdateStatus) => void): () => void;
   openReleaseNotes(): Promise<void>;
+  restartAndInstall(): Promise<void>;
 }

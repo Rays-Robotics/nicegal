@@ -7,7 +7,7 @@ import {
   shell,
   type IpcMainInvokeEvent,
 } from "electron";
-import electronUpdater from "electron-updater";
+import { autoUpdater } from "electron-updater";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -16,11 +16,10 @@ import type { UpdateStatus } from "../shared/updates";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { loadAutomaticUpdates, saveAutomaticUpdates } from "./update-preferences";
 
-const { autoUpdater } = electronUpdater;
 const RELEASES = "https://github.com/centuryofimage/nicegal/releases";
 const LATEST_RELEASE_API = "https://api.github.com/repos/centuryofimage/nicegal/releases/latest";
 
-/** GitHub's web /releases/latest redirects; electron-updater 6.x expects JSON from it. */
+/** GitHub's web /releases/latest redirects; updater feed requests expect JSON from it. */
 export async function latestStableReleaseFeed(): Promise<string> {
   const response = await net.fetch(LATEST_RELEASE_API, {
     headers: {
@@ -61,9 +60,13 @@ export function supportsAutomaticUpdates(
 }
 
 /** Main-process ownership keeps checks independent of gallery navigation and renderer reloads. */
-export function startUpdates(isTrustedSender: (event: IpcMainInvokeEvent) => boolean): {
+export function startUpdates(
+  isTrustedSender: (event: IpcMainInvokeEvent) => boolean,
+  requestRestart: () => void,
+): {
   stop: () => void;
   deferInstallation: () => void;
+  installAndRestart: () => boolean;
 } {
   const supported = supportsAutomaticUpdates(
     app.isPackaged,
@@ -77,6 +80,8 @@ export function startUpdates(isTrustedSender: (event: IpcMainInvokeEvent) => boo
   // accidentally re-armed cached installer; enabling takes effect on the next launch.
   let disabledForSession = !automaticUpdates;
   let cancelDownload: (() => void) | undefined;
+  let installationDeferred = false;
+  let restartRequested = false;
   const mayUpdate = (): boolean => supported && !disabledForSession;
   const enabled = mayUpdate();
   let status: UpdateStatus = { phase: enabled ? "idle" : "disabled", version: null };
@@ -113,7 +118,7 @@ export function startUpdates(isTrustedSender: (event: IpcMainInvokeEvent) => boo
     if (!value) {
       disabledForSession = true;
       clearTimeout(timers.initial);
-      autoUpdater.autoInstallOnAppQuit = false;
+      autoUpdater.autoInstallEvent = "manual";
       cancelDownload?.();
       publish("disabled");
     }
@@ -125,27 +130,44 @@ export function startUpdates(isTrustedSender: (event: IpcMainInvokeEvent) => boo
     // Never navigate to arbitrary URLs supplied by release metadata or by the renderer.
     await shell.openExternal(`${RELEASES}/tag/v${encodeURIComponent(status.version)}`);
   });
+  ipcMain.handle(IPC_CHANNELS.updates.restartAndInstall, (event) => {
+    authorize(event);
+    if (!mayUpdate() || status.phase !== "ready") throw new Error("No update is ready to install");
+    if (restartRequested) return;
+    restartRequested = true;
+    // Let the IPC response reach the renderer before before-quit closes its window.
+    setImmediate(() => {
+      if (!stopped && mayUpdate() && status.phase === "ready") requestRestart();
+    });
+  });
 
   const deferInstallation = (): void => {
-    autoUpdater.autoInstallOnAppQuit = false;
+    installationDeferred = true;
+    autoUpdater.autoInstallEvent = "manual";
+  };
+  const installAndRestart = (): boolean => {
+    if (!mayUpdate() || status.phase !== "ready" || installationDeferred) return false;
+    // Called only after index.ts drains the backend. The normal on-quit hook uses
+    // install(true, false), which cannot relaunch the app after installation.
+    autoUpdater.quitAndInstall({ isSilent: true, isForceRunAfter: true });
+    return true;
   };
   const stop = (): void => {
     stopped = true;
     clearTimeout(timers.initial);
   };
   if (!enabled) {
-    autoUpdater.autoInstallOnAppQuit = false;
-    return { stop, deferInstallation };
+    autoUpdater.autoInstallEvent = "manual";
+    return { stop, deferInstallation, installAndRestart };
   }
 
   autoUpdater.logger = console;
   // Start the download explicitly so opting out while the feed request is in flight cannot
   // start an unwanted download, and so we hold its cancellation token before work begins.
   autoUpdater.autoDownload = false;
-  // electron-updater 6.x's equivalent of v7's autoInstallEvent = "onQuit".
-  // Its install hook runs on `quit`, AFTER index.ts's asynchronous before-quit backend drain.
+  // Its on-quit install hook runs AFTER index.ts's asynchronous before-quit backend drain.
   // Do not call quitAndInstall(): that starts the installer before the backend has stopped.
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallEvent = "onQuit";
   autoUpdater.autoRunAppAfterInstall = false;
   autoUpdater.allowPrerelease = false;
   autoUpdater.channel = "latest";
@@ -153,8 +175,7 @@ export function startUpdates(isTrustedSender: (event: IpcMainInvokeEvent) => boo
   autoUpdater.disableWebInstaller = true;
   autoUpdater.disableDifferentialDownload = false;
 
-  // 6.x lacks v7's session-end guard. Do not start an installer during OS shutdown/logoff.
-  // Leave the verified download cached for the next launch/check and normal quit.
+  // Keep installation disarmed during OS shutdown/logoff, leaving the verified download cached.
   powerMonitor.on("shutdown", deferInstallation);
   const watchWindow = (window: BrowserWindow): void => {
     window.on("query-session-end", deferInstallation);
@@ -203,7 +224,7 @@ export function startUpdates(isTrustedSender: (event: IpcMainInvokeEvent) => boo
     }
   };
   // One check per launch, after initial gallery startup. No polling or in-session retry.
-  timers.initial = setTimeout(() => void check(), 30_000);
+  timers.initial = setTimeout(() => void check(), 5_000);
   timers.initial.unref();
-  return { stop, deferInstallation };
+  return { stop, deferInstallation, installAndRestart };
 }

@@ -3,21 +3,27 @@
 
   import type { UpdateStatus as UpdateState } from "../../../shared/updates";
 
+  import UpdateAvailableDialog from "./UpdateAvailableDialog.svelte";
   import UpdateStatus from "./UpdateStatus.svelte";
 
   let update = $state<UpdateState>({ phase: "disabled", version: null });
+  let showingUpdateDialog = $state(false);
+  function receiveUpdateStatus(status: UpdateState): void {
+    update = status;
+    if (status.phase !== "ready") showingUpdateDialog = false;
+  }
   onMount(() => {
     // Subscribe before reading the snapshot; an intervening event is newer than that read.
     let receivedEvent = false;
     let disposed = false;
     const unsubscribe = window.nicegal.updates.onStatusChanged((status) => {
       receivedEvent = true;
-      update = status;
+      receiveUpdateStatus(status);
     });
     void window.nicegal.updates
       .getStatus()
       .then((status) => {
-        if (!disposed && !receivedEvent) update = status;
+        if (!disposed && !receivedEvent) receiveUpdateStatus(status);
       })
       .catch((error: unknown) => console.error("Could not read update status", error));
     return () => {
@@ -25,12 +31,6 @@
       unsubscribe();
     };
   });
-
-  function openReleaseNotes(): void {
-    void window.nicegal.updates.openReleaseNotes().catch((error: unknown) => {
-      console.error("Could not open release notes", error);
-    });
-  }
 
   let {
     theme,
@@ -57,7 +57,7 @@
     {@render workspace()}
   </section>
   <footer class="status-bar">
-    <UpdateStatus status={update} onnotes={openReleaseNotes} />
+    <UpdateStatus status={update} onopen={() => (showingUpdateDialog = true)} />
     {@render status()}
   </footer>
 </main>
@@ -65,6 +65,17 @@
 {#if modals}
   <div class="modal-layer" data-theme={theme}>
     {@render modals()}
+  </div>
+{/if}
+
+{#if showingUpdateDialog && update.phase === "ready"}
+  <div class="modal-layer update-modal-layer" data-theme={theme}>
+    <UpdateAvailableDialog
+      version={update.version}
+      onclose={() => (showingUpdateDialog = false)}
+      onnotes={() => window.nicegal.updates.openReleaseNotes()}
+      onrestart={() => window.nicegal.updates.restartAndInstall()}
+    />
   </div>
 {/if}
 
@@ -112,5 +123,9 @@
 
   .modal-layer {
     display: contents;
+  }
+
+  .update-modal-layer {
+    --modal-width: 410px;
   }
 </style>

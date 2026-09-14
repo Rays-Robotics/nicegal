@@ -61,9 +61,11 @@ jobs:
           - os: windows-latest
             platform: windows
             target: win
+            electronbuilder: "~/AppData/Local/electron-builder"
           - os: ubuntu-24.04
             platform: linux
             target: linux
+            electronbuilder: "~/.cache/electron-builder"
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -134,6 +136,12 @@ jobs:
         with:
           version: 11.24.0
           cache: true
+
+      - name: Get electron builder from cache
+        uses: actions/cache@v6
+        with:
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          path: ${{ matrix.electronbuilder }}
 
       # Bundles the server, provider libraries, and Visual C++ runtime DLLs.
       - name: Build nicegal-server (DirectML and OpenVINO)

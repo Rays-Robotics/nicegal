@@ -35,8 +35,9 @@ let calls = 0;
 let resolveDownload: () => void = () => {};
 let cancelledDownloads = 0;
 let downloads = 0;
+const explicitInstalls: { isSilent: boolean; isForceRunAfter: boolean }[] = [];
 const updater = Object.assign(new EventEmitter(), {
-  autoInstallOnAppQuit: false,
+  autoInstallEvent: "manual",
   autoDownload: false,
   autoRunAppAfterInstall: true,
   allowPrerelease: false,
@@ -68,6 +69,9 @@ const updater = Object.assign(new EventEmitter(), {
       resolveDownload = resolve;
     });
   },
+  quitAndInstall: (options: { isSilent: boolean; isForceRunAfter: boolean }) => {
+    explicitInstalls.push(options);
+  },
 });
 const mocks = { app, window, net, powerMonitor, updater, handlers, opened };
 (globalThis as typeof globalThis & { __updateMocks: typeof mocks }).__updateMocks = mocks;
@@ -94,7 +98,7 @@ const vite = await createServer({
         export const shell = { openExternal: async (url) => { m.opened.push(url); } };
       `;
         if (id === "\0update-electron-updater")
-          return "export default { autoUpdater: globalThis.__updateMocks.updater };";
+          return "export const autoUpdater = globalThis.__updateMocks.updater;";
         return undefined;
       },
     },
@@ -137,10 +141,14 @@ test("one check per launch, ready state, trusted notes and quit deferral", async
     if (previousAppImage === undefined) delete process.env.APPIMAGE;
     else process.env.APPIMAGE = previousAppImage;
   });
-  const service = startUpdates((event: unknown) => event === "trusted");
+  let restartRequests = 0;
+  const service = startUpdates(
+    (event: unknown) => event === "trusted",
+    () => restartRequests++,
+  );
   t.after(service.stop);
   assert.equal(updater.autoDownload, false, "downloads start explicitly with a cancellation token");
-  assert.equal(updater.autoInstallOnAppQuit, true);
+  assert.equal(updater.autoInstallEvent, "onQuit");
   assert.equal(updater.autoRunAppAfterInstall, false);
   assert.equal(updater.allowPrerelease, false);
   assert.equal(updater.channel, "latest");
@@ -149,11 +157,13 @@ test("one check per launch, ready state, trusted notes and quit deferral", async
   assert.equal(updater.disableWebInstaller, true);
   assert.throws(() => handlers.get("updates:status")!("foreign"), /Untrusted/);
   await assert.rejects(async () => handlers.get("updates:release-notes")!("foreign"), /Untrusted/);
+  assert.throws(() => handlers.get("updates:restart-and-install")!("foreign"), /Untrusted/);
+  assert.throws(() => handlers.get("updates:restart-and-install")!("trusted"), /No update/);
   const status = (): UpdateStatus => handlers.get("updates:status")!("trusted") as UpdateStatus;
   assert.deepEqual(status(), { phase: "idle", version: null });
   await handlers.get("updates:release-notes")!("trusted");
   assert.equal(opened.length, 0);
-  t.mock.timers.tick(29_999);
+  t.mock.timers.tick(4_999);
   assert.equal(calls, 0);
   t.mock.timers.tick(1);
   await flushUpdateCheck();
@@ -175,23 +185,32 @@ test("one check per launch, ready state, trusted notes and quit deferral", async
   assert.deepEqual(messages.at(-1), status());
   await handlers.get("updates:release-notes")!("trusted");
   assert.deepEqual(opened, ["https://github.com/centuryofimage/nicegal/releases/tag/v0.0.42"]);
+  handlers.get("updates:restart-and-install")!("trusted");
+  await flushUpdateCheck();
+  assert.equal(restartRequests, 1);
+  handlers.get("updates:restart-and-install")!("trusted");
+  await flushUpdateCheck();
+  assert.equal(restartRequests, 1, "a repeated click cannot queue another restart");
+  assert.equal(service.installAndRestart(), true);
+  assert.deepEqual(explicitInstalls, [{ isSilent: true, isForceRunAfter: true }]);
   t.mock.timers.tick(6 * 60 * 60 * 1000);
   assert.equal(calls, 1, "keep the downloaded version stable until quit");
   t.mock.method(console, "error", () => {});
   updater.emit("error", new Error("installation failed"));
   assert.deepEqual(status(), { phase: "ready", version: "0.0.42" });
   window.emit("query-session-end");
-  assert.equal(updater.autoInstallOnAppQuit, false);
-  updater.autoInstallOnAppQuit = true;
+  assert.equal(updater.autoInstallEvent, "manual");
+  updater.autoInstallEvent = "onQuit";
   powerMonitor.emit("shutdown");
-  assert.equal(updater.autoInstallOnAppQuit, false);
-  updater.autoInstallOnAppQuit = true;
+  assert.equal(updater.autoInstallEvent, "manual");
+  updater.autoInstallEvent = "onQuit";
   service.deferInstallation();
   assert.equal(
-    updater.autoInstallOnAppQuit,
-    false,
+    updater.autoInstallEvent,
+    "manual",
     "failed backend shutdown can suppress installation",
   );
+  assert.equal(service.installAndRestart(), false, "session shutdown must not force an install");
   service.stop();
   t.mock.timers.tick(6 * 60 * 60 * 1000);
   assert.equal(calls, 1);
@@ -202,7 +221,10 @@ test("dev is disabled and does not schedule checks", (t) => {
   app.isPackaged = false;
   const electronProcess = process as NodeJS.Process & { resourcesPath?: string };
   electronProcess.resourcesPath = process.cwd();
-  const service = startUpdates(() => true);
+  const service = startUpdates(
+    () => true,
+    () => {},
+  );
   delete electronProcess.resourcesPath;
   t.after(service.stop);
   const before = calls;
@@ -230,18 +252,24 @@ test("failed checks do not retry until the next launch; quitting before the dela
     attempts++;
     throw new Error("offline");
   });
-  const first = startUpdates(() => true);
+  const first = startUpdates(
+    () => true,
+    () => {},
+  );
   t.after(first.stop);
-  t.mock.timers.tick(30_000);
+  t.mock.timers.tick(5_000);
   await flushUpdateCheck();
   assert.equal(attempts, 1);
   assert.deepEqual(handlers.get("updates:status")!({}), { phase: "error", version: null });
   t.mock.timers.tick(7 * 24 * 60 * 60 * 1000);
   assert.equal(attempts, 1, "no retry even after a week running");
   first.stop();
-  const second = startUpdates(() => true);
+  const second = startUpdates(
+    () => true,
+    () => {},
+  );
   second.stop();
-  t.mock.timers.tick(30_000);
+  t.mock.timers.tick(5_000);
   assert.equal(attempts, 1, "an early quit cancels the pending startup check");
 });
 
@@ -261,7 +289,10 @@ test("opt-out persists, cancels a download, hides ready state and cannot re-arm 
   });
   updater.removeAllListeners();
   app.isPackaged = true;
-  const service = startUpdates((event: unknown) => event === "trusted");
+  const service = startUpdates(
+    (event: unknown) => event === "trusted",
+    () => {},
+  );
   t.after(service.stop);
   const setEnabled = (value: unknown): unknown =>
     handlers.get("updates:set-enabled")!("trusted", value);
@@ -272,13 +303,14 @@ test("opt-out persists, cancels a download, hides ready state and cannot re-arm 
     supported: true,
   });
   const previousDownloads = downloads;
-  t.mock.timers.tick(30_000);
+  t.mock.timers.tick(5_000);
   await flushUpdateCheck();
   assert.equal(downloads, previousDownloads + 1);
   const previousCancelled = cancelledDownloads;
   assert.deepEqual(setEnabled(false), { enabled: false, supported: true });
   assert.equal(cancelledDownloads, previousCancelled + 1);
-  assert.equal(updater.autoInstallOnAppQuit, false);
+  assert.throws(() => handlers.get("updates:restart-and-install")!("trusted"), /No update/);
+  assert.equal(updater.autoInstallEvent, "manual");
   assert.equal(
     JSON.parse(readFileSync(join(userData, "update-settings.json"), "utf8")).automaticUpdates,
     false,
@@ -289,16 +321,19 @@ test("opt-out persists, cancels a download, hides ready state and cannot re-arm 
     version: null,
   });
   setEnabled(true);
-  assert.equal(updater.autoInstallOnAppQuit, false);
+  assert.equal(updater.autoInstallEvent, "manual");
   const previousCalls = calls;
   t.mock.timers.tick(7 * 24 * 60 * 60 * 1000);
   assert.equal(calls, previousCalls);
   setEnabled(false);
   service.stop();
   updater.removeAllListeners();
-  const nextLaunch = startUpdates(() => true);
+  const nextLaunch = startUpdates(
+    () => true,
+    () => {},
+  );
   t.after(nextLaunch.stop);
-  t.mock.timers.tick(30_000);
+  t.mock.timers.tick(5_000);
   assert.equal(calls, previousCalls, "saved opt-out is read before scheduling");
   assert.deepEqual(handlers.get("updates:preferences")!({}), { enabled: false, supported: true });
 });
@@ -363,11 +398,14 @@ test("opting out during the release lookup never starts an updater check", async
         finishLookup = resolve;
       }),
   );
-  const service = startUpdates(() => true);
+  const service = startUpdates(
+    () => true,
+    () => {},
+  );
   t.after(service.stop);
   const checksBefore = calls;
   const feedsBefore = feedUrls.length;
-  t.mock.timers.tick(30_000);
+  t.mock.timers.tick(5_000);
   handlers.get("updates:set-enabled")!({}, false);
   finishLookup(Response.json({ tag_name: "v0.0.42", prerelease: false, draft: false }));
   await flushUpdateCheck();

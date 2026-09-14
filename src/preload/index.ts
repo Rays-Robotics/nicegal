@@ -36,6 +36,7 @@ const updates: UpdateBridge = {
     return () => ipcRenderer.off(IPC_CHANNELS.updates.statusChanged, handler);
   },
   openReleaseNotes: () => ipcRenderer.invoke(IPC_CHANNELS.updates.releaseNotes),
+  restartAndInstall: () => ipcRenderer.invoke(IPC_CHANNELS.updates.restartAndInstall),
 };
 
 const backend: NicegalBridge["backend"] = {

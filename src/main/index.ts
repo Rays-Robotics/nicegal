@@ -44,6 +44,7 @@ let shutdownComplete = false;
 let shutdownStarted = false;
 let backendShutdown: Promise<void> | null = null;
 let updates: ReturnType<typeof startUpdates> | null = null;
+let restartForUpdate = false;
 
 function broadcastBackendStatus(): void {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -308,7 +309,10 @@ if (app.requestSingleInstanceLock()) {
       () => thumbnailReader,
     );
     createWindow();
-    updates = startUpdates(isTrustedRenderer);
+    updates = startUpdates(isTrustedRenderer, () => {
+      restartForUpdate = true;
+      app.quit();
+    });
 
     try {
       await initializeBackend();
@@ -329,6 +333,9 @@ if (app.requestSingleInstanceLock()) {
     shutdownStarted = true;
     updates?.stop();
     void shutdownBackend()
+      .then(() => {
+        if (restartForUpdate) updates?.installAndRestart();
+      })
       .catch((error: unknown) => {
         // A locked backend binary must never be replaced by the on-quit installer.
         updates?.deferInstallation();
