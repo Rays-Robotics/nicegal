@@ -89,7 +89,7 @@ function fixture(): {
   };
 }
 
-test("All publishes fast results, independent lanes, fixed related cutoff and deduplicated groups", async () => {
+test("All publishes fast results, independent lanes, top-ten related tail and deduplicated groups", async () => {
   const f = fixture();
   const catalog = items();
   f.search.query = "needle";
@@ -109,6 +109,7 @@ test("All publishes fast results, independent lanes, fixed related cutoff and de
   assert.equal(f.search.displaySnippets.get("2"), "needle.jpg");
   await pause(320);
   assert.equal(new Set(f.requests.map((request) => request.searchSession)).size, 1);
+  assert.equal(f.requests.find((request) => request.searchLane === "meaning")?.limit, 10);
   f.complete("visual", response(["8", "7", "6", "5", "4", "3", "2", "1"]));
   await pause(5);
   assert.equal(
@@ -122,11 +123,11 @@ test("All publishes fast results, independent lanes, fixed related cutoff and de
   assert.equal(f.search.pending, false);
   assert.deepEqual(
     view.items.map((item) => item.id),
-    ["1", "2", "3", "8", "7", "6", "5", "4"],
+    ["1", "2", "3", "4", "5", "6", "7", "8"],
   );
   assert.deepEqual(
     view.sections?.map((section) => section.count),
-    [2, 1, 5],
+    [8, 0],
   );
   assert.equal(view.sources?.get("1"), "Names and text, Visual results");
   assert.equal(f.search.displaySnippets.get("1"), "needle", "All keeps literal OCR excerpts");
@@ -142,7 +143,7 @@ test("All publishes fast results, independent lanes, fixed related cutoff and de
   assert.equal(dated.sections, undefined);
   assert.deepEqual(
     dated.items.map((item) => item.id),
-    ["1", "2", "3", "8"],
+    ["1", "2", "3", "4", "5", "6", "7", "8"],
   );
   assert.equal(f.search.sliderLabel, "Visual similarity");
   assert.equal(f.search.sliderApplicable, true);
@@ -152,6 +153,52 @@ test("All publishes fast results, independent lanes, fixed related cutoff and de
   f.search.minMatchPercentile = 100;
   assert.equal(f.search.apply(catalog).items.length, 8, "CLIP is unfiltered in Relevance");
   assert.equal(f.requests.length, before, "presentation changes reuse responses");
+  f.search.dispose();
+});
+
+test("All keeps text search but skips visual text requests for an image-only model", async () => {
+  const f = fixture();
+  const catalog = items();
+  f.search.query = "needle";
+  f.search.schedule("library", catalog, "modified", false);
+  await pause();
+  assert.deepEqual(
+    f.requests.map((request) => request.searchLane),
+    ["literal", "meaning"],
+  );
+  f.complete("literal", response(["1"]));
+  f.complete("meaning", response(["3"]));
+  await pause(5);
+  assert.equal(f.search.pending, false);
+  assert.deepEqual(
+    f.search.apply(catalog).items.map((item) => item.id),
+    ["1", "2", "3"],
+  );
+  f.search.dispose();
+});
+
+test("All caps related text at ten hits and appends it inside the literal section", async () => {
+  const f = fixture();
+  const catalog = items(30);
+  f.search.query = "needle";
+  f.search.schedule("library", catalog, "modified");
+  await pause();
+  f.complete("literal", response(["30"]));
+  f.complete("meaning", response(catalog.map((item) => item.id)));
+  f.complete("visual", response([]));
+  await pause(5);
+  const view = f.search.apply(catalog);
+  assert.deepEqual(
+    view.sections?.map((section) => section.key),
+    ["literal", "visual"],
+  );
+  assert.deepEqual(
+    view.items.map((item) => item.id),
+    ["30", "2", "1", "3", "4", "5", "6", "7", "8", "9", "10"],
+  );
+  assert.equal(f.search.displaySnippets.has("11"), false);
+  assert.equal(view.sources?.get("2"), "Names and text");
+  assert.equal(view.sections?.[0].status, "");
   f.search.dispose();
 });
 
@@ -260,7 +307,7 @@ test("a lane failure preserves siblings and commits wait until pointer interacti
     f.search.apply(catalog).items.map((item) => item.id),
     ["1", "2", "8"],
   );
-  assert.match(f.search.apply(catalog).sections![1].status!, /Model unavailable/);
+  assert.match(f.search.apply(catalog).sections![0].status!, /Model unavailable/);
   assert.equal(f.search.pending, false);
   f.search.dispose();
 });

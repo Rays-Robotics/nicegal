@@ -144,7 +144,8 @@ export function createLibraryViewController(
       return;
     }
     void visualReferenceRevision;
-    untrack(() => ocrSearch.schedule(root, items, timeline));
+    const supportsImageTextQueries = runtime.supportsImageTextQueries;
+    untrack(() => ocrSearch.schedule(root, items, timeline, supportsImageTextQueries));
   });
   $effect(() => {
     const catalogItems = catalog.items;

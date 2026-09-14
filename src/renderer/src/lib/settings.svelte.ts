@@ -42,7 +42,7 @@ export interface GallerySettings {
    * runtime with the OS `prefers-reduced-motion` setting, which always wins when set — this
    * only controls the case where the OS has no motion preference expressed. */
   playAnimatedPreviews: boolean;
-  /** Development-only cap for a catalog sync. Zero indexes the complete library. */
+  /** Development-only cap for each indexing phase. Zero indexes the complete library. */
   debugIndexLimit: number;
 }
 

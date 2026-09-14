@@ -1,6 +1,7 @@
 import type {
   ExecutionProviderId,
   RuntimeStatus,
+  ImageModelStatus,
   SearchModelsResponse,
 } from "../../../shared/backend";
 
@@ -21,6 +22,14 @@ export class RuntimeController {
   error = $state<string | null>(null);
   models = $state<SearchModelsResponse | null>(null);
   modelError = $state<string | null>(null);
+  get imageModel(): ImageModelStatus | null {
+    return this.status?.imageModel ?? null;
+  }
+  get supportsImageTextQueries(): boolean {
+    return this.imageModel?.supportsTextQueries ?? true;
+  }
+  imageModelSaving = $state(false);
+  imageModelError = $state<string | null>(null);
   ocrLoaded = $state(false);
   /**
    * The provider OCR models actually compiled onto, from `GET /v1/ocr/models`'s `loaded` field —
@@ -99,8 +108,22 @@ export class RuntimeController {
     }
   }
 
+  async setImageModel(model: string): Promise<void> {
+    if (this.imageModelSaving || this.saving) return;
+    this.imageModelSaving = true;
+    this.imageModelError = null;
+    try {
+      this.status = await window.nicegal.backend.setImageModel(model);
+      await this.refreshModels();
+    } catch (error) {
+      this.imageModelError = errorMessage(error);
+    } finally {
+      this.imageModelSaving = false;
+    }
+  }
+
   async setExecutionProvider(executionProvider: ExecutionProviderId): Promise<void> {
-    if (this.saving) return;
+    if (this.saving || this.imageModelSaving) return;
     const generation = ++this.statusGeneration;
     const previous = this.status;
     this.saving = true;

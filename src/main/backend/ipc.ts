@@ -24,6 +24,7 @@ interface BackendIpcContext {
   status: BackendStatus;
   client: NicegalServerClient | null;
   isTrustedSender: IpcSenderValidator;
+  restartForModelChange: () => Promise<void>;
 }
 
 interface JobSubscription {
@@ -86,6 +87,23 @@ export function registerBackendIpc(context: BackendIpcContext): void {
   };
 
   handleTrustedIpc(IPC_CHANNELS.backend.status, context.isTrustedSender, () => context.status);
+  let changingModel = false;
+  handleTrustedIpc(
+    IPC_CHANNELS.backend.setImageModel,
+    context.isTrustedSender,
+    async (_event, model: unknown) => {
+      if (typeof model !== "string" || model.length > 200) throw new Error("Invalid image model");
+      if (changingModel) throw new Error("Image model change already in progress");
+      changingModel = true;
+      try {
+        const status = await requireBackend().setImageModel(model);
+        if (status.imageModel.restartRequired) await context.restartForModelChange();
+        return await requireBackend().getRuntimeStatus();
+      } finally {
+        changingModel = false;
+      }
+    },
+  );
   handleTrustedIpc(IPC_CHANNELS.backend.getRuntimeStatus, context.isTrustedSender, () =>
     requireBackend().getRuntimeStatus(),
   );
@@ -492,6 +510,7 @@ function validateOcrIndexScan(value: unknown): OcrIndexJobRequest["params"]["sca
       "retryFailed",
       "cleanup",
       "maxDimensions",
+      "debugLimit",
     ]) ||
     (value.recursive !== undefined && typeof value.recursive !== "boolean") ||
     (value.exclude !== undefined &&
@@ -502,7 +521,11 @@ function validateOcrIndexScan(value: unknown): OcrIndexJobRequest["params"]["sca
     // `cleanup` may only ever be omitted or explicitly `false` — the backend does not accept
     // requesting cleanup from the renderer.
     (value.cleanup !== undefined && value.cleanup !== false) ||
-    (value.maxDimensions !== undefined && !isMaxDimensions(value.maxDimensions))
+    (value.maxDimensions !== undefined && !isMaxDimensions(value.maxDimensions)) ||
+    (value.debugLimit !== undefined &&
+      (typeof value.debugLimit !== "number" ||
+        !Number.isSafeInteger(value.debugLimit) ||
+        value.debugLimit <= 0))
   ) {
     throw new TypeError("Invalid OCR index job");
   }
@@ -515,6 +538,7 @@ function validateOcrIndexScan(value: unknown): OcrIndexJobRequest["params"]["sca
     ...(value.maxDimensions === undefined
       ? {}
       : { maxDimensions: value.maxDimensions as { width: number; height: number } }),
+    ...(value.debugLimit === undefined ? {} : { debugLimit: value.debugLimit as number }),
   };
 }
 

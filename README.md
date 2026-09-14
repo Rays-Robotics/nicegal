@@ -35,12 +35,16 @@ built with svelte and a
 
 If you have a really bad gpu, you might benefit from changing the onnx execution provider from directml to OpenVino and then restarting the application. For most users, DirectML > OpenVino > CPU.
 
+## Special acknowledgements
+
+This project was heavily inspired by (rclip)[https://github.com/yurijmikhalevich/rclip]. It definitely wouldn't have been possible without (ort)[https://ort.pyke.io/] and (sqlite-vec)[https://github.com/asg017/sqlite-vec].
+
 ## License
 
+### Application licenses
+
 The original frontend code is licensed under [MIT](LICENSE). The original backend
-code is licensed under [PolyForm Internal Use 1.0.0](nicegal-server/LICENSE).
+code is licensed under [GNU AGPL version 3 only](nicegal-server/LICENSE).
 Modified third-party code in `nicegal-server/vendor/` remains Apache-2.0.
 These terms do not replace separately identified component licenses. Downloaded
 model weights are subject to their publishers' licenses. See [LICENSING](LICENSING).
-
-The backend is source-available; its license does not grant redistribution rights.

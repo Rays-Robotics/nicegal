@@ -86,6 +86,16 @@ export class NicegalServerClient {
     return (await response.json()) as RuntimeStatus;
   }
 
+  async setImageModel(model: string): Promise<RuntimeStatus> {
+    return (await (
+      await this.request("/v1/runtime", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ imageModel: model }),
+      })
+    ).json()) as RuntimeStatus;
+  }
+
   async setExecutionProvider(executionProvider: ExecutionProviderId): Promise<RuntimeStatus> {
     const response = await this.request("/v1/runtime", {
       method: "PUT",
@@ -444,7 +454,9 @@ export class NicegalServerClient {
       if (apiError) {
         throw new NicegalServerError(apiError.code, apiError.message, response.status);
       }
-      throw new Error(`nicegal-server ${method} ${url.pathname} failed (${response.status}): ${detail}`);
+      throw new Error(
+        `nicegal-server ${method} ${url.pathname} failed (${response.status}): ${detail}`,
+      );
     }
     this.log?.write("http", "request-completed", {
       method,

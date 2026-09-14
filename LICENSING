@@ -1,7 +1,8 @@
 The original frontend application code is licensed under MIT. See LICENSE.
 
 The original backend application code in nicegal-server/ is licensed under
-PolyForm Internal Use 1.0.0. See nicegal-server/LICENSE.
+GNU Affero General Public License version 3 only (AGPL-3.0-only).
+See nicegal-server/LICENSE. Copyright 2026 bep.
 
 The modified third-party code in nicegal-server/vendor/ remains licensed under
 Apache-2.0. Its license files and attribution notices are retained within that
@@ -9,4 +10,16 @@ directory. These application terms do not replace the licenses applicable to
 separately identified components or other third-party dependencies.
 
 Model weights downloaded during operation are subject to their respective
-publishers' licenses.
+publishers' licenses. The selectable image models are:
+
+- MetaCLIP2 B/32 and B/16: CC BY-NC 4.0
+  https://creativecommons.org/licenses/by-nc/4.0/
+  https://huggingface.co/facebook/metaclip-2-worldwide-b32
+  https://huggingface.co/facebook/metaclip-2-worldwide-b16
+- SigLIP2 Base B/16 256: Apache-2.0
+  https://huggingface.co/google/siglip2-base-patch16-256
+- SigLIP beta SwinV2 Base: Apache-2.0
+  https://huggingface.co/deepghs/siglip_beta
+- DINOv3 B/16 224: DINOv3 License
+  https://ai.meta.com/resources/models-and-libraries/dinov3-license
+  https://huggingface.co/timm/vit_base_patch16_dinov3.lvd1689m

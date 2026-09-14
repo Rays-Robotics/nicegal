@@ -1,0 +1,7 @@
+.venv/
+exports/
+cache/
+state/
+*.log
+*.jsonl
+__pycache__/

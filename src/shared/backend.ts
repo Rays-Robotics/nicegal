@@ -4,16 +4,33 @@ export interface BackendStatus {
   ready: boolean;
   error: string | null;
   /** A deliberate provider fallback may resume the user's indexing intent once ready. */
-  restartReason?: "provider-fallback";
+  restartReason?: "provider-fallback" | "model-change";
 }
 
 /** `cpu` | `directml` | `openvino` — see `nicegal_core::runtime::ExecutionProvider`. */
 export type ExecutionProviderId = "cpu" | "directml" | "openvino";
 
+export interface ImageModelStatus {
+  activeModel: string;
+  selectedModel: string;
+  supportsTextQueries: boolean;
+  restartRequired: boolean;
+  models: {
+    id: string;
+    name: string;
+    dimensions: number;
+    license: string;
+    url: string;
+    available: boolean;
+    supportsTextQueries: boolean;
+  }[];
+}
+
 /** `GET`/`PUT /v1/runtime` — the ONNX Runtime provider nicegal-server is running with, and the
  * persisted choice for its next launch. They differ right after a change, since the server never
  * replaces its already-loaded runtime in place. */
 export interface RuntimeStatus {
+  imageModel: ImageModelStatus;
   activeExecutionProvider: string;
   activeRuntimeDistribution: string;
   onnxRuntimeBuildInfo: string;
@@ -238,6 +255,8 @@ export interface OcrIndexJobRequest {
       retryFailed?: boolean;
       cleanup?: false;
       maxDimensions?: { width: number; height: number };
+      /** Debug cap applied to each indexing phase. */
+      debugLimit?: number;
     };
   };
 }
@@ -290,7 +309,7 @@ export interface OcrModelsResponse {
 }
 
 export interface SearchModelStatus {
-  state: "notLoaded" | "preparing" | "ready" | "failed";
+  state: "notLoaded" | "preparing" | "ready" | "failed" | "unsupported";
   error: string | null;
 }
 
@@ -373,6 +392,7 @@ export interface BackendBridge {
    * today, only when the nicegal-server process exits unexpectedly. */
   onBackendStatusChanged(listener: (status: BackendStatus) => void): () => void;
   getRuntimeStatus(): Promise<RuntimeStatus>;
+  setImageModel(model: string): Promise<RuntimeStatus>;
   setExecutionProvider(executionProvider: ExecutionProviderId): Promise<RuntimeStatus>;
   listAssets(options: { root: string; timeline: Timeline }): Promise<GalleryAsset[]>;
   countAssets(root: string): Promise<number>;
@@ -395,6 +415,8 @@ export interface BackendBridge {
 }
 
 export interface NativeBridge {
+  openExternalUrl(url: string): Promise<void>;
+  openLicenseInformation(): Promise<void>;
   chooseDirectory(): Promise<string | null>;
   chooseVisualSearchImage(): Promise<ExternalVisualReference | null>;
   onAddToVisualSearch(listener: (assetIds: string[], replace: boolean) => void): () => void;

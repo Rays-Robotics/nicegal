@@ -1,0 +1,45 @@
+.about-settings {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-9);
+  padding: var(--space-9);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  user-select: text;
+}
+.about-settings h2,
+.about-settings p {
+  margin: 0;
+}
+.about-settings h2 {
+  font-size: var(--dialog-title-size);
+  font-weight: var(--font-weight-semibold);
+}
+.about-version {
+  margin-left: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  font-weight: normal;
+}
+.about-settings a {
+  color: var(--accent-active);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+.about-settings a:hover {
+  color: var(--accent);
+}
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+}
+.about-error {
+  color: var(--danger);
+}
+.about-settings a:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

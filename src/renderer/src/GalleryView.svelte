@@ -41,7 +41,7 @@
   }
   let gallery = $state<VirtualGallery>();
   const thumbnailFailures = $derived(gallery?.getThumbnailFailures(catalog.items) ?? []);
-  let settingsPage = $state<"gallery" | "search">("gallery");
+  let settingsPage = $state<"gallery" | "search" | "about">("gallery");
   let galleryContainer = $state<HTMLDivElement>();
   const view = createLibraryViewController(application, (y) => gallery?.scrollTo(y));
   const inspectedAsset = $derived(

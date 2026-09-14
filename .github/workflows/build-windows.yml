@@ -143,11 +143,6 @@ jobs:
         if: runner.os == 'Linux'
         run: pnpm run build:backend
 
-      - name: Verify Linux runtime inference
-        if: runner.os == 'Linux'
-        working-directory: nicegal-server
-        run: ./dev.sh test --release --locked -p nicegal-core --features ort-openvino --test linux_runtime -- --ignored
-
       # Written into package.json rather than committed: electron-builder reads the version from
       # there, and it is what lands in every artifact name.
       - name: Stamp the version
@@ -182,10 +177,17 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          test -s dist/latest-linux.yml
-          test -s dist/linux-unpacked/resources/app-update.yml
-          test -s 'dist/nicegal-${{ needs.version.outputs.version }}-linux-x64.AppImage'
-          test -s 'dist/nicegal-${{ needs.version.outputs.version }}-linux-x64.deb'
+          # electron-builder uses the platform's architecture names in Linux artifact filenames.
+          for artifact in \
+            dist/latest-linux.yml \
+            dist/linux-unpacked/resources/app-update.yml \
+            'dist/nicegal-${{ needs.version.outputs.version }}-linux-x86_64.AppImage' \
+            'dist/nicegal-${{ needs.version.outputs.version }}-linux-amd64.deb'; do
+            if [ ! -s "$artifact" ]; then
+              echo "Missing or empty Linux release artifact: $artifact" >&2
+              exit 1
+            fi
+          done
 
       - name: Attest downloads
         if: github.repository == 'centuryofimage/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'

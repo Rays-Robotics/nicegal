@@ -1,9 +1,10 @@
-import { BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } from "electron";
+import { BrowserWindow, dialog, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import { readFile, stat } from "node:fs/promises";
 
 import type { NicegalServerClient } from "../backend/nicegal-server-client";
 import type { IpcSenderValidator } from "../ipc";
 
+import licenseInformation from "../../../resources/licenses/license-information.html?asset&asarUnpack";
 import { IPC_CHANNELS } from "../../shared/ipc-channels";
 import { handleTrustedIpc } from "../ipc";
 import {
@@ -22,6 +23,27 @@ export interface NativeIpcContext {
 
 /** Main-process capabilities backed by Electron/OS APIs rather than the search backend. */
 export function registerNativeIpc(context: NativeIpcContext): void {
+  handleTrustedIpc(
+    IPC_CHANNELS.native.openExternalUrl,
+    context.isTrustedSender,
+    async (_event, value) => {
+      if (typeof value !== "string") throw new TypeError("Expected a web link");
+      const url = new URL(value);
+      if (url.protocol !== "https:" || url.username || url.password) {
+        throw new TypeError("Only HTTPS links without credentials can be opened");
+      }
+      await shell.openExternal(url.href);
+    },
+  );
+  handleTrustedIpc(
+    IPC_CHANNELS.native.openLicenseInformation,
+    context.isTrustedSender,
+    async () => {
+      // Fixed unpacked asset: the renderer cannot supply an arbitrary local path.
+      const error = await shell.openPath(licenseInformation);
+      if (error) throw new Error(error);
+    },
+  );
   handleTrustedIpc(IPC_CHANNELS.native.chooseDirectory, context.isTrustedSender, async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     if (!owner) throw new Error("Directory picker requires an owning application window");

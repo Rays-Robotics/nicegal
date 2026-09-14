@@ -11,14 +11,50 @@
   const { runtime, jobs, orchestrator, catalog } = services;
   const names: { key: keyof SearchModelsResponse; label: string }[] = [
     { key: "text", label: "Text meaning" },
-    { key: "clipImage", label: "CLIP image indexing" },
-    { key: "clipText", label: "CLIP text search" },
+    { key: "clipImage", label: "Image indexing" },
+    { key: "clipText", label: "Image text search" },
   ];
+  const modelDescriptions: Record<string, string> = {
+    "facebook/metaclip-2-worldwide-b32": "Good enough for most searches. A balanced starting point.",
+    "facebook/metaclip-2-worldwide-b16":
+      "Sees more detail and can give slightly better results. Best with a stronger GPU.",
+    "google/siglip2-base-patch16-256":
+      "Similar visual search, but prioritizes results differently.",
+    "deepghs/siglip_beta/smilingwolf/siglip_swinv2_base_2025_02_22_18h56m54s":
+      "Specialty model trained on Danbooru tags. Good for anime and art, less useful elsewhere.",
+    "facebook/dinov3-vitb16-pretrain-lvd1689m":
+      "Very fast indexing and image-to-image search. Does not search from picture descriptions.",
+  };
+  const modelLicenses: Record<string, { label: string; url: string }> = {
+    "facebook/metaclip-2-worldwide-b32": {
+      label: "CC BY-NC 4.0",
+      url: "https://creativecommons.org/licenses/by-nc/4.0/",
+    },
+    "facebook/metaclip-2-worldwide-b16": {
+      label: "CC BY-NC 4.0",
+      url: "https://creativecommons.org/licenses/by-nc/4.0/",
+    },
+    "facebook/dinov3-vitb16-pretrain-lvd1689m": {
+      label: "DINOv3 license",
+      url: "https://ai.meta.com/resources/models-and-libraries/dinov3-license",
+    },
+  };
+  let modelLicenseError = $state<string | null>(null);
+  async function openModelLicense(event: MouseEvent & { currentTarget: HTMLAnchorElement }): Promise<void> {
+    event.preventDefault();
+    modelLicenseError = null;
+    try {
+      await window.nicegal.native.openExternalUrl(event.currentTarget.href);
+    } catch (cause) {
+      modelLicenseError = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
   const labels: Record<SearchModelStatus["state"], string> = {
     notLoaded: "Not loaded this session",
     preparing: "Downloading or loading…",
     ready: "Ready",
     failed: "Preparation failed",
+    unsupported: "Not supported by this image model",
   };
   const setupJob = $derived(
     jobs.active && (jobs.active.type === "modelPrepare" || jobs.active.type === "ocrModelLoad")
@@ -31,7 +67,9 @@
   const ready = $derived(
     runtime.ocrLoaded &&
       runtime.models &&
-      Object.values(runtime.models).every((model) => model.state === "ready"),
+      Object.values(runtime.models).every(
+        (model) => model.state === "ready" || model.state === "unsupported",
+      ),
   );
   const failed = $derived(
     Boolean(
@@ -53,6 +91,64 @@
 
 <section aria-labelledby="search-models-title" class="model-section">
   <h2 id="search-models-title">Search setup</h2>
+  <fieldset
+    class="image-model-picker"
+    disabled={!runtime.imageModel ||
+      runtime.imageModelSaving ||
+      runtime.saving ||
+      jobs.running ||
+      !catalog.backendStatus.ready}
+  >
+    <legend>Image search model</legend>
+    <p class="model-intro">
+      Chooses how pictures are compared with example images and descriptions. It does not change OCR
+      or related-text search.
+    </p>
+    {#if runtime.imageModel && !runtime.imageModel.models.some((model) => model.id === runtime.imageModel?.activeModel)}
+      <p class="retired-model">A previous image model is selected. Choose one below to switch.</p>
+    {/if}
+    <div class="image-model-options">
+      {#each runtime.imageModel?.models ?? [] as model (model.id)}
+        <div class="image-model-option" class:chosen={model.id === runtime.imageModel?.activeModel}>
+          <label>
+            <input
+              type="radio"
+              name="image-search-model"
+              value={model.id}
+              checked={model.id === runtime.imageModel?.activeModel}
+              disabled={!model.available}
+              onchange={(event) => runtime.setImageModel(event.currentTarget.value)}
+            />
+            <span class="model-copy">
+              <span class="model-name">{model.name}</span>
+              <span class="model-description">{modelDescriptions[model.id] ?? "Visual search model."}</span>
+            </span>
+          </label>
+          {#if modelLicenses[model.id]}
+            <a href={modelLicenses[model.id].url} onclick={openModelLicense}
+              >{modelLicenses[model.id].label}</a
+            >
+          {/if}
+          {#if !model.available}<span class="model-unavailable">Unavailable</span>{/if}
+        </div>
+      {/each}
+    </div>
+  </fieldset>
+  {#if modelLicenseError}<p class="model-error" role="alert">{modelLicenseError}</p>{/if}
+  {#if !runtime.supportsImageTextQueries}
+    <p>
+      This model finds similar images from image examples. Text descriptions are unavailable; file
+      name and OCR text searches still work.
+    </p>
+  {/if}
+  <p>
+    {runtime.imageModelSaving
+      ? "Switching image model…"
+      : "Each model keeps its own index. Switching briefly restarts the gallery service."}
+  </p>
+  {#if runtime.imageModelError}<p class="model-error" role="alert">
+      {runtime.imageModelError}
+    </p>{/if}
   <p>
     Find words, meaning and similar pictures. Indexing sets this up automatically, or you can do it
     here.

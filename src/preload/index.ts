@@ -52,6 +52,9 @@ const backend: NicegalBridge["backend"] = {
   getRuntimeStatus(): Promise<RuntimeStatus> {
     return ipcRenderer.invoke(IPC_CHANNELS.backend.getRuntimeStatus);
   },
+  setImageModel(model: string): Promise<RuntimeStatus> {
+    return ipcRenderer.invoke(IPC_CHANNELS.backend.setImageModel, model);
+  },
   setExecutionProvider(executionProvider: ExecutionProviderId): Promise<RuntimeStatus> {
     return ipcRenderer.invoke(IPC_CHANNELS.backend.setExecutionProvider, executionProvider);
   },
@@ -131,6 +134,12 @@ const backend: NicegalBridge["backend"] = {
 };
 
 const native: NativeBridge = {
+  openExternalUrl(url: string): Promise<void> {
+    return ipcRenderer.invoke(IPC_CHANNELS.native.openExternalUrl, url);
+  },
+  openLicenseInformation(): Promise<void> {
+    return ipcRenderer.invoke(IPC_CHANNELS.native.openLicenseInformation);
+  },
   chooseDirectory(): Promise<string | null> {
     return ipcRenderer.invoke(IPC_CHANNELS.native.chooseDirectory);
   },

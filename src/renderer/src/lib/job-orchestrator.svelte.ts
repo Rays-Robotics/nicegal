@@ -1,4 +1,5 @@
 import type { JobTracker } from "./job-tracker.svelte";
+import { get } from "svelte/store";
 
 import {
   DEFAULT_OCR_MODEL_LOAD_REQUEST,
@@ -8,6 +9,7 @@ import {
 import { errorMessage } from "./errors";
 import { clearPendingJob, loadPendingJob, savePendingJob } from "./job-resume";
 import { isTerminalJobStatus } from "./job-state";
+import { settings } from "./settings.svelte";
 
 /**
  * Owns the multi-job *intent* the user (or app startup) expressed, as opposed to `JobTracker`,
@@ -136,11 +138,17 @@ export class JobOrchestrator {
   }
 
   async startOcrIndex(root: string, retryFailed = false): Promise<void> {
+    const debugLimit = get(settings).debugIndexLimit;
     const request: JobRequest = {
       type: "ocrIndex",
       params: {
         root,
-        scan: { recursive: true, cleanup: false, ...(retryFailed ? { retryFailed: true } : {}) },
+        scan: {
+          recursive: true,
+          cleanup: false,
+          ...(retryFailed ? { retryFailed: true } : {}),
+          ...(debugLimit > 0 ? { debugLimit } : {}),
+        },
       },
     };
     if (!this.indexIntent) {

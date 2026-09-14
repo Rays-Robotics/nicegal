@@ -10,6 +10,7 @@ export const IPC_CHANNELS = {
     status: "backend:status",
     statusChanged: "backend:status-changed",
     getRuntimeStatus: "backend:get-runtime-status",
+    setImageModel: "backend:set-image-model",
     setExecutionProvider: "backend:set-execution-provider",
     assetMetadata: "backend:asset-metadata",
     listAssets: "backend:list-assets",
@@ -29,6 +30,8 @@ export const IPC_CHANNELS = {
     ensureThumbnails: "backend:ensure-thumbnails",
   },
   native: {
+    openExternalUrl: "native:open-external-url",
+    openLicenseInformation: "native:open-license-information",
     chooseDirectory: "native:choose-directory",
     chooseVisualSearchImage: "native:choose-visual-search-image",
     addToVisualSearch: "native:add-to-visual-search",

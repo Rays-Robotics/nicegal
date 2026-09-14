@@ -57,6 +57,18 @@ const backendContext = {
     return backendClient;
   },
   isTrustedSender: isTrustedRenderer,
+  restartForModelChange: async (): Promise<void> => {
+    backendStatus.restartReason = "model-change";
+    try {
+      await shutdownBackend();
+      if (shutdownStarted) throw new Error("The app is closing");
+      await initializeBackend();
+    } catch (error) {
+      backendStatus.error = formatBackendError(error);
+      broadcastBackendStatus();
+      throw error;
+    }
+  },
 };
 registerBackendIpc(backendContext);
 registerNativeIpc({

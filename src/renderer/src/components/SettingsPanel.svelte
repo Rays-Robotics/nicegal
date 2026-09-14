@@ -7,6 +7,7 @@
 
   import { useApplication } from "../lib/application.svelte";
   import { settings, settingsLimits, type GalleryTheme } from "../lib/settings.svelte";
+  import AboutSettings from "./AboutSettings.svelte";
   import SearchModels from "./SearchModels.svelte";
   import SliderRow from "./SliderRow.svelte";
 
@@ -14,12 +15,12 @@
     runtime,
     onclose,
     onshowintro,
-    page = $bindable<"gallery" | "search">("gallery"),
+    page = $bindable<"gallery" | "search" | "about">("gallery"),
   }: {
     runtime: RuntimeController;
     onclose: () => void;
     onshowintro: () => void;
-    page?: "gallery" | "search";
+    page?: "gallery" | "search" | "about";
   } = $props();
 
   const themes: { id: GalleryTheme; label: string }[] = [
@@ -61,10 +62,11 @@
     }
   }
 
+  const isLinux = navigator.userAgent.includes("Linux");
   const executionProviders: { id: ExecutionProviderId; label: string }[] = [
     { id: "directml", label: "DirectML" },
-    { id: "openvino", label: "OpenVINO" },
-    { id: "cpu", label: "CPU" },
+    { id: "openvino", label: "OpenVINO (CPU)" },
+    { id: "cpu", label: "Legacy" },
   ];
 
   async function setExecutionProvider(id: ExecutionProviderId): Promise<void> {
@@ -86,6 +88,9 @@
     >
     <button class="ui-button" aria-pressed={page === "search"} onclick={() => (page = "search")}
       >Search</button
+    >
+    <button class="ui-button" aria-pressed={page === "about"} onclick={() => (page = "about")}
+      >About</button
     >
   </nav>
   {#if !catalog.backendStatus.ready && catalog.backendStatus.error}
@@ -184,6 +189,8 @@
         {/if}
         {#if updateError}<p class="settings-error" role="alert">{updateError}</p>{/if}
       </section>
+    {:else if page === "about"}
+      <AboutSettings />
     {:else}
       <SearchModels />
       <details class="settings-group advanced-settings" open={Boolean(runtime.error)}>
@@ -193,11 +200,13 @@
             >Execution provider<small
               >{runtime.status?.restartRequired
                 ? "Restart the app to apply."
-                : "DirectML is the default. Leave this unless indexing fails."}</small
+                : isLinux
+                  ? "OpenVINO (CPU) is the default. Leave this unless indexing fails."
+                  : "DirectML is the default. Leave this unless indexing fails."}</small
             ></span
           >
           <div class="segmented" aria-label="Execution provider">
-            {#each executionProviders as provider (provider.id)}
+            {#each executionProviders.filter((provider) => !isLinux || provider.id !== "directml") as provider (provider.id)}
               <button
                 class={{ active: runtime.status?.configuredExecutionProvider === provider.id }}
                 aria-pressed={runtime.status?.configuredExecutionProvider === provider.id}

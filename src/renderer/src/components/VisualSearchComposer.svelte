@@ -23,6 +23,7 @@
     onclose,
     onclear,
     selectedPhotoCount = 0,
+    supportsTextQueries = true,
   }: {
     expression?: string;
     references?: VisualReferenceTerm[];
@@ -33,18 +34,21 @@
     onclose: () => void;
     onclear: () => void;
     selectedPhotoCount?: number;
+    supportsTextQueries?: boolean;
   } = $props();
 
   // The popover is recreated when it closes. Its rows are a deliberately local editing draft,
   // so capture the opening expression once rather than reactively resetting it while a user types.
-  const initialExpression = untrack(() => expression);
+  const initialExpression = untrack(() => expression.trim());
   let terms = $state<VisualTextTerm[]>(parseVisualTextTerms(initialExpression));
   let lastWrittenExpression = initialExpression;
   let nextId = 0;
   let addMenuOpen = $state(false);
   let addButton: HTMLButtonElement;
   let composerEl: HTMLDivElement;
-  const exampleCount = $derived(parseVisualTextTerms(expression).length + references.length);
+  const exampleCount = $derived(
+    (supportsTextQueries ? parseVisualTextTerms(expression).length : 0) + references.length,
+  );
 
   function formattedExpression(): string {
     return formatVisualTextTerms(terms);
@@ -52,16 +56,16 @@
 
   function sync(): void {
     const nextExpression = formattedExpression();
-    lastWrittenExpression = nextExpression;
+    lastWrittenExpression = nextExpression.trim();
     onexpressionchange(nextExpression);
   }
 
   // The main field can be edited while this popover is open. Synchronize only those outside
   // edits; writes made from a row keep their draft and focus instead of remounting on each key.
   $effect(() => {
-    if (expression === lastWrittenExpression) return;
+    if (expression.trim() === lastWrittenExpression) return;
     terms = parseVisualTextTerms(expression);
-    lastWrittenExpression = expression;
+    lastWrittenExpression = expression.trim();
   });
 
   function addText(): void {
@@ -125,11 +129,27 @@
       </span>
     </div>
     <p>“Less like” changes similarity; it does not guarantee an exclusion.</p>
+    {#if !supportsTextQueries}
+      <p>Choose a file or selected library photos to find similar images.</p>
+      {#if terms.length}
+        <div class="unsupported-terms" role="alert">
+          <p>Remove these descriptions to search with this image-only model:</p>
+          {#each terms as term (term.id)}
+            <div>
+              <span>{term.text || "Empty description"}</span>
+              <button type="button" class="remove" onclick={() => remove(term.id)}
+                aria-label="Remove description {term.text || "example"}"><X size={13} aria-hidden="true" /></button
+              >
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {/if}
     <div class="term-list">
       <div class="term-head" aria-hidden="true">
-        <span>Match</span><span>Description</span><span>Weight</span><span></span>
+        <span>Match</span><span>{supportsTextQueries ? "Description or image" : "Image"}</span><span>Weight</span><span></span>
       </div>
-      {#each terms as term, index (term.id)}
+      {#each supportsTextQueries ? terms : [] as term, index (term.id)}
         <div class="term-row">
           <select
             aria-label="Match direction for {term.text || `example ${index + 1}`}"
@@ -218,7 +238,9 @@
         >
         {#if addMenuOpen}
           <div class="add-menu-popup" role="menu" aria-label="Add visual example">
-            <button type="button" role="menuitem" onclick={addText}>Text description</button>
+            {#if supportsTextQueries}
+              <button type="button" role="menuitem" onclick={addText}>Text description</button>
+            {/if}
             <button
               type="button"
               role="menuitem"
@@ -309,6 +331,34 @@
   .term-list {
     display: grid;
     border: 1px solid var(--border);
+  }
+  .unsupported-terms {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--danger);
+    background: color-mix(in srgb, var(--danger) 7%, var(--surface-1));
+  }
+  .unsupported-terms p {
+    color: var(--danger);
+  }
+  .unsupported-terms > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding-left: var(--space-3);
+    border: 1px solid var(--border);
+  }
+  .unsupported-terms > div span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .unsupported-terms .remove {
+    width: 28px;
+    flex: none;
   }
   .term-head,
   .term-row {

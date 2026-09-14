@@ -12,11 +12,15 @@
   import X from "@lucide/svelte/icons/x";
   import { tick } from "svelte";
 
+  import { useApplication } from "../lib/application.svelte";
   import { isQuerySyntaxError } from "../lib/errors";
   import { popoverDismiss } from "../lib/popover-dismiss";
   import { OCR_SYNTAX_NOTES, parseQuery, withScope, type SearchScope } from "../lib/search-query";
   import { parseVisualTextTerms, type VisualReferenceTerm } from "../lib/visual-query";
   import VisualSearchComposer from "./VisualSearchComposer.svelte";
+  const {
+    services: { runtime },
+  } = useApplication();
 
   // The match count used to sit at the right of the field; it lives in the status bar's items
   // segment now (see StatusBar.svelte), which has the width to spare and no duplicate denominator.
@@ -114,6 +118,8 @@
 
   /** Tooltip: summary first, then one syntax note per line. */
   function scopeTitle(option: ScopeOption): string {
+    if (!runtime.supportsImageTextQueries && option.scope === "like")
+      return "Find similar images using image examples";
     return [option.summary, ...(option.syntax ?? [])].join("\n");
   }
 
@@ -123,6 +129,8 @@
    * wider than the box at ordinary window sizes.
    */
   function scopeHintText(option: ScopeOption): string {
+    if (!runtime.supportsImageTextQueries && option.scope === "like")
+      return "Add an image example to find similar pictures";
     return option.syntax?.length ? option.syntax.join(SYNTAX_GAP) : option.summary;
   }
 
@@ -336,6 +344,11 @@
       <input
         bind:this={inputEl}
         bind:value
+        readonly={parsed.scope === "like" && !runtime.supportsImageTextQueries}
+        onclick={() => {
+          if (parsed.scope === "like" && !runtime.supportsImageTextQueries && !composerOpen)
+            toggleComposer();
+        }}
         onscroll={syncBackdrop}
         type="text"
         {placeholder}
@@ -393,6 +406,7 @@
   {/if}
   {#if parsed.scope === "like" && composerOpen}
     <VisualSearchComposer
+      supportsTextQueries={runtime.supportsImageTextQueries}
       expression={parsed.body}
       references={visualReferences}
       onexpressionchange={setVisualExpression}
@@ -404,7 +418,7 @@
       onclear={clear}
     />
   {/if}
-  {#if message && !menuOpen}
+  {#if message && !menuOpen && !composerOpen}
     <div class="search-message search-error" role="alert">
       <CircleAlert size={12} aria-hidden="true" />
       <div class="search-message-body">
