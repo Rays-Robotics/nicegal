@@ -51,6 +51,7 @@ export function jobLabel(snapshot: JobSnapshot): string {
   }
 
   if (snapshot.phase === "queued") return "Queued";
+  if (snapshot.progress.download) return "Downloading models";
   if (snapshot.type === "libraryPurge" && snapshot.phase === "pruning") return "Removing";
   return jobPhaseLabel(snapshot.phase);
 }
@@ -90,6 +91,15 @@ function itemProgress(progress: JobProgress, fallbackText?: string): PhaseProgre
  * phases (`downloadingModels`) format as bytes; item-counted phases format as counts. */
 export function jobPhaseProgress(snapshot: JobSnapshot): PhaseProgress {
   const { progress } = snapshot;
+  if (progress.download) {
+    const { downloadedBytes, totalBytes } = progress.download;
+    return totalBytes > 0
+      ? {
+          text: `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`,
+          ratio: Math.min(1, downloadedBytes / totalBytes),
+        }
+      : { text: downloadedBytes > 0 ? formatBytes(downloadedBytes) : "Connecting…", ratio: null };
+  }
   switch (snapshot.phase) {
     case "downloadingModels": {
       const { downloadedBytes, downloadTotalBytes } = progress;

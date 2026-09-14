@@ -25,7 +25,7 @@
 
   const themes: { id: GalleryTheme; label: string }[] = [
     { id: "seven-a", label: "very" },
-    { id: "seven-b", label: "nice" },
+    { id: "seven-b", label: "Hospital" },
   ];
   const { catalog } = useApplication().services;
   let updatePreferences = $state<UpdatePreferences | null>(null);

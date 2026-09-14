@@ -76,6 +76,10 @@
 
   {#if !isTerminalJobStatus(job.status)}
     <section class="within-phase">
+      {#if job.progress.download}
+        <div class="model-download-name">{job.progress.download.modelId}</div>
+        <div class="model-download-file">{job.progress.download.filename}</div>
+      {/if}
       <div class="within-phase-heading">
         <span>{currentLabel}</span>
         <span class="progress-value">{phaseProgress.text}</span>

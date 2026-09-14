@@ -75,3 +75,60 @@
     margin-left: 24px;
   }
 }
+.model-download {
+  margin: var(--space-8) var(--space-9);
+}
+
+.model-section .model-download p {
+  margin: 0;
+}
+
+.model-download-name,
+.model-download-file {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.model-download-file {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.model-download-track {
+  height: var(--space-12);
+  margin: var(--space-5) 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--track-groove);
+  box-shadow: var(--bevel-sunken);
+}
+
+.model-download-track > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.model-download-track > .indeterminate {
+  animation: model-download-pending 1s linear infinite;
+}
+
+.model-download-value {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes model-download-pending {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(290%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-download-track > .indeterminate {
+    animation: none;
+  }
+}

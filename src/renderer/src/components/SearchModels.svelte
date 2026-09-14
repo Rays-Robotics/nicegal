@@ -15,7 +15,8 @@
     { key: "clipText", label: "Image text search" },
   ];
   const modelDescriptions: Record<string, string> = {
-    "facebook/metaclip-2-worldwide-b32": "Good enough for most searches. A balanced starting point.",
+    "facebook/metaclip-2-worldwide-b32":
+      "Good enough for most searches. A balanced starting point.",
     "facebook/metaclip-2-worldwide-b16":
       "Sees more detail and can give slightly better results. Best with a stronger GPU.",
     "google/siglip2-base-patch16-256":
@@ -40,7 +41,9 @@
     },
   };
   let modelLicenseError = $state<string | null>(null);
-  async function openModelLicense(event: MouseEvent & { currentTarget: HTMLAnchorElement }): Promise<void> {
+  async function openModelLicense(
+    event: MouseEvent & { currentTarget: HTMLAnchorElement },
+  ): Promise<void> {
     event.preventDefault();
     modelLicenseError = null;
     try {
@@ -64,9 +67,14 @@
   const settingUp = $derived(
     orchestrator.preparingSearchModels || Boolean(setupJob && jobs.running),
   );
+  const download = $derived(settingUp ? setupJob?.progress.download : undefined);
+  const downloadProgress = $derived(download && setupJob ? jobPhaseProgress(setupJob) : null);
+  const downloadPercent = $derived(
+    downloadProgress?.ratio != null ? Math.floor(downloadProgress.ratio * 100) : undefined,
+  );
   const currentSetupModel = $derived.by((): string | null => {
     const job = setupJob;
-    if (!settingUp || !job) return null;
+    if (!settingUp || !job || download) return null;
     if (job.type === "ocrModelLoad") {
       return job.phase === "downloadingModels" || job.phase === "loadingModels"
         ? "PaddleOCR v6 small detector and recognizer"
@@ -142,7 +150,9 @@
             />
             <span class="model-copy">
               <span class="model-name">{model.name}</span>
-              <span class="model-description">{modelDescriptions[model.id] ?? "Visual search model."}</span>
+              <span class="model-description"
+                >{modelDescriptions[model.id] ?? "Visual search model."}</span
+              >
             </span>
           </label>
           {#if modelLicenses[model.id]}
@@ -178,7 +188,31 @@
     {#if settingUp}Setting up search…{:else if ready}Search is ready{:else if failed}Search setup
       needs attention{:else if stopped}Setup stopped{:else}Search models load when needed{/if}
   </p>
-  {#if settingUp && setupJob}<p>{jobLabel(setupJob)} {jobPhaseProgress(setupJob).text}</p>{/if}
+  {#if download && downloadProgress}
+    <div class="model-download">
+      <p class="model-download-name">Downloading: <strong>{download.modelId}</strong></p>
+      <p class="model-download-file">{download.filename}</p>
+      <div
+        class="model-download-track"
+        role="progressbar"
+        aria-label={`Downloading ${download.filename}`}
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={downloadPercent}
+        aria-valuetext={downloadProgress.text}
+      >
+        <span
+          class:indeterminate={downloadPercent === undefined}
+          style:width={downloadPercent === undefined ? "35%" : `${downloadPercent}%`}
+        ></span>
+      </div>
+      <p class="model-download-value">
+        {downloadProgress.text}{downloadPercent !== undefined ? ` · ${downloadPercent}%` : ""}
+      </p>
+    </div>
+  {:else if settingUp && setupJob}
+    <p>{jobLabel(setupJob)} {jobPhaseProgress(setupJob).text}</p>
+  {/if}
   {#if currentSetupModel}
     <p class="current-model" role="status">
       {setupJob?.phase === "downloadingModels" ? "Downloading" : "Preparing"}:

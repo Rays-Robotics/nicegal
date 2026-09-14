@@ -50,6 +50,14 @@
   const displayLabel = $derived(
     needsAttention && job.status === "completed" ? "Completed with issues" : label,
   );
+  const downloading = $derived(
+    running && (Boolean(job.progress.download) || job.phase === "downloadingModels"),
+  );
+  const compactLabel = $derived(
+    downloading
+      ? `${job.status === "cancelling" ? "Cancelling" : "Downloading"}${phaseProgress.ratio !== null ? ` ${Math.floor(phaseProgress.ratio * 100)}%` : "…"}`
+      : `${displayLabel}${count ? ` · ${count}` : ""}`,
+  );
   const dismissOnClose = $derived(job.status === "completed" && !needsAttention);
   let cardPinned = $state(false);
   let hiddenAttentionJob = $state<string | null>(null);
@@ -107,7 +115,7 @@
       {/if}
     </span>
     <span class="job-status">
-      <span class="job-label">{displayLabel}{count ? ` · ${count}` : ""}</span>
+      <span class="job-label">{compactLabel}</span>
     </span>
     {#if running || job.status === "completed"}
       <span
@@ -176,7 +184,7 @@
     position: relative;
     display: flex;
     flex: none;
-    align-self: stretch;
+    align-self: flex-start;
   }
 
   .job-indicator {

@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   ipcMain,
+  net,
   powerMonitor,
   shell,
   type IpcMainInvokeEvent,
@@ -17,6 +18,35 @@ import { loadAutomaticUpdates, saveAutomaticUpdates } from "./update-preferences
 
 const { autoUpdater } = electronUpdater;
 const RELEASES = "https://github.com/centuryofimage/nicegal/releases";
+const LATEST_RELEASE_API = "https://api.github.com/repos/centuryofimage/nicegal/releases/latest";
+
+/** GitHub's web /releases/latest redirects; electron-updater 6.x expects JSON from it. */
+export async function latestStableReleaseFeed(): Promise<string> {
+  const response = await net.fetch(LATEST_RELEASE_API, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "nicegal-updater",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Latest release lookup failed: HTTP ${response.status}`);
+  const release: unknown = await response.json();
+  if (
+    typeof release !== "object" ||
+    release === null ||
+    !("tag_name" in release) ||
+    typeof release.tag_name !== "string" ||
+    !/^v\d+\.\d+\.\d+$/.test(release.tag_name) ||
+    !("prerelease" in release) ||
+    release.prerelease !== false ||
+    !("draft" in release) ||
+    release.draft !== false
+  ) {
+    throw new Error("Latest release response is not a stable numeric release");
+  }
+  return `${RELEASES}/download/${release.tag_name}`;
+}
 
 /** Only the NSIS installer creates this marker; ZIP/portable share the same app payload. */
 export function supportsAutomaticUpdates(
@@ -154,6 +184,11 @@ export function startUpdates(isTrustedSender: (event: IpcMainInvokeEvent) => boo
   const check = async (): Promise<void> => {
     if (stopped || !mayUpdate()) return;
     try {
+      const feedUrl = await latestStableReleaseFeed();
+      if (stopped || !mayUpdate()) return;
+      // Keep electron-updater's verified NSIS/AppImage downloads and versioned blockmap URLs,
+      // while bypassing its GitHub provider's broken /releases/latest JSON lookup.
+      autoUpdater.setFeedURL({ provider: "generic", url: feedUrl });
       const result = await autoUpdater.checkForUpdates();
       if (!result?.isUpdateAvailable || stopped || !mayUpdate()) return;
       const token = result.cancellationToken;

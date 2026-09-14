@@ -213,6 +213,14 @@ export interface JobProgress {
   deleted: number;
   downloadedBytes: number;
   downloadTotalBytes: number;
+  /** Current model file; absent for cache hits and while loading sessions. */
+  download?: {
+    modelId: string;
+    filename: string;
+    downloadedBytes: number;
+    /** Zero while the remote size is unknown. */
+    totalBytes: number;
+  };
   modelsLoaded: number;
 }
 

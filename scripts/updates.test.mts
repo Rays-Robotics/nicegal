@@ -11,6 +11,17 @@ import type { UpdateStatus } from "../src/shared/updates.ts";
 const handlers = new Map<string, (event: unknown, value?: unknown) => unknown>();
 const messages: unknown[] = [];
 const opened: string[] = [];
+const feedUrls: string[] = [];
+const releaseRequests: string[] = [];
+const net = {
+  fetch: async (input: string): Promise<Response> => {
+    releaseRequests.push(input);
+    return Response.json({ tag_name: "v0.0.42", prerelease: false, draft: false });
+  },
+};
+const flushUpdateCheck = async (): Promise<void> => {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+};
 const window = Object.assign(new EventEmitter(), {
   webContents: {
     isDestroyed: () => false,
@@ -33,6 +44,10 @@ const updater = Object.assign(new EventEmitter(), {
   allowDowngrade: true,
   disableWebInstaller: false,
   disableDifferentialDownload: true,
+  setFeedURL: (configuration: { provider: string; url: string }) => {
+    assert.equal(configuration.provider, "generic");
+    feedUrls.push(configuration.url);
+  },
   checkForUpdates: async () => {
     calls++;
     updater.emit("checking-for-update");
@@ -54,7 +69,7 @@ const updater = Object.assign(new EventEmitter(), {
     });
   },
 });
-const mocks = { app, window, powerMonitor, updater, handlers, opened };
+const mocks = { app, window, net, powerMonitor, updater, handlers, opened };
 (globalThis as typeof globalThis & { __updateMocks: typeof mocks }).__updateMocks = mocks;
 // Simulated updater, temporary installed marker; never touches real installs or GitHub.
 const vite = await createServer({
@@ -72,6 +87,7 @@ const vite = await createServer({
           return `
         const m = globalThis.__updateMocks;
         export const app = m.app;
+        export const net = m.net;
         export const powerMonitor = m.powerMonitor;
         export const BrowserWindow = { getAllWindows: () => [m.window] };
         export const ipcMain = { handle: (name, handler) => m.handlers.set(name, handler) };
@@ -140,8 +156,14 @@ test("one check per launch, ready state, trusted notes and quit deferral", async
   t.mock.timers.tick(29_999);
   assert.equal(calls, 0);
   t.mock.timers.tick(1);
-  await Promise.resolve();
+  await flushUpdateCheck();
   assert.equal(calls, 1);
+  assert.deepEqual(releaseRequests, [
+    "https://api.github.com/repos/centuryofimage/nicegal/releases/latest",
+  ]);
+  assert.deepEqual(feedUrls, [
+    "https://github.com/centuryofimage/nicegal/releases/download/v0.0.42",
+  ]);
   assert.deepEqual(status(), { phase: "downloading", version: "0.0.42" });
   t.mock.timers.tick(6 * 60 * 60 * 1000);
   assert.equal(calls, 1, "no second check while the download promise is pending");
@@ -211,8 +233,7 @@ test("failed checks do not retry until the next launch; quitting before the dela
   const first = startUpdates(() => true);
   t.after(first.stop);
   t.mock.timers.tick(30_000);
-  await Promise.resolve();
-  await Promise.resolve();
+  await flushUpdateCheck();
   assert.equal(attempts, 1);
   assert.deepEqual(handlers.get("updates:status")!({}), { phase: "error", version: null });
   t.mock.timers.tick(7 * 24 * 60 * 60 * 1000);
@@ -252,7 +273,7 @@ test("opt-out persists, cancels a download, hides ready state and cannot re-arm 
   });
   const previousDownloads = downloads;
   t.mock.timers.tick(30_000);
-  await Promise.resolve();
+  await flushUpdateCheck();
   assert.equal(downloads, previousDownloads + 1);
   const previousCancelled = cancelledDownloads;
   assert.deepEqual(setEnabled(false), { enabled: false, supported: true });
@@ -301,4 +322,56 @@ test("invalid saved preferences fail closed; preference writes preserve unrelate
   saveAutomaticUpdates(path, true);
   assert.equal(loadAutomaticUpdates(path), true);
   assert.equal(readFileSync(other, "utf8"), "keep me");
+});
+
+test("latest release lookup accepts only a successful stable numeric release", async (t) => {
+  const { latestStableReleaseFeed } = await vite.ssrLoadModule("/src/main/updates.ts");
+  let response = Response.json({ tag_name: "v0.0.7", prerelease: false, draft: false });
+  t.mock.method(net, "fetch", async () => response);
+  assert.equal(
+    await latestStableReleaseFeed(),
+    "https://github.com/centuryofimage/nicegal/releases/download/v0.0.7",
+  );
+  response = Response.json({ tag_name: "v0.0.8-beta.1", prerelease: true, draft: false });
+  await assert.rejects(latestStableReleaseFeed(), /stable numeric release/);
+  response = Response.json({ tag_name: "v0.0.8/../../other", prerelease: false, draft: false });
+  await assert.rejects(latestStableReleaseFeed(), /stable numeric release/);
+  response = new Response("rate limited", { status: 403 });
+  await assert.rejects(latestStableReleaseFeed(), /HTTP 403/);
+});
+
+test("opting out during the release lookup never starts an updater check", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  userData = mkdtempSync(join(tmpdir(), "nicegal-update-lookup-optout-"));
+  const electronProcess = process as NodeJS.Process & { resourcesPath?: string };
+  electronProcess.resourcesPath = userData;
+  writeFileSync(join(userData, "nicegal-installed"), "nsis");
+  const previousAppImage = process.env.APPIMAGE;
+  if (process.platform === "linux") process.env.APPIMAGE = "/test/nicegal.AppImage";
+  t.after(() => {
+    delete electronProcess.resourcesPath;
+    if (previousAppImage === undefined) delete process.env.APPIMAGE;
+    else process.env.APPIMAGE = previousAppImage;
+  });
+  app.isPackaged = true;
+  let finishLookup: (response: Response) => void = () => {};
+  t.mock.method(
+    net,
+    "fetch",
+    () =>
+      new Promise<Response>((resolve) => {
+        finishLookup = resolve;
+      }),
+  );
+  const service = startUpdates(() => true);
+  t.after(service.stop);
+  const checksBefore = calls;
+  const feedsBefore = feedUrls.length;
+  t.mock.timers.tick(30_000);
+  handlers.get("updates:set-enabled")!({}, false);
+  finishLookup(Response.json({ tag_name: "v0.0.42", prerelease: false, draft: false }));
+  await flushUpdateCheck();
+  assert.equal(calls, checksBefore);
+  assert.equal(feedUrls.length, feedsBefore);
+  assert.deepEqual(handlers.get("updates:status")!({}), { phase: "disabled", version: null });
 });
