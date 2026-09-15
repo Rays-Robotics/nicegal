@@ -33,6 +33,10 @@ built with svelte and a
 
 ## Perf tips
 
+The app is super super fast when using CLIP models. I hit 200 images per second on my NVIDIA 5070.
+
+OCR is slow and intensive no matter what. 30 images per second on my computer... but CLIP works really well as an OCR model, so you can just not use OCR.
+
 If you have a really bad gpu, you might benefit from changing the onnx execution provider from directml to OpenVino and then restarting the application. For most users, DirectML > OpenVino > CPU.
 
 ## Special acknowledgements
