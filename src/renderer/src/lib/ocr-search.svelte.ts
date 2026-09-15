@@ -706,7 +706,8 @@ export class OcrSearchController {
           sources.set(id, existing ? `${existing}, ${label}` : label);
         if (!existing) combined.push(item);
       }
-      groups.push({ key, label, start, count: combined.length - start, status });
+      const count = combined.length - start;
+      if (count > 0) groups.push({ key, label, start, count, status });
     };
     add(
       "literal",

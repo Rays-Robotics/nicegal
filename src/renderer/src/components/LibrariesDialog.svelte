@@ -153,6 +153,7 @@
         class="thumbnail-options"
         aria-label={`Thumbnail options for ${selectedLibrary.displayName}`}
       >
+        <h2>Thumbnails</h2>
         <p>Thumbnails are generated on demand. Pre-generate only if you need them.</p>
         <div class="bucket-row">
           {#each bucketOptions as bucket (bucket)}
@@ -294,6 +295,11 @@
 </section>
 
 <style>
+  .thumbnail-options h2 {
+    margin: 0;
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-semibold);
+  }
   .libraries-dialog {
     --metric-columns: 75px 75px 115px;
     box-sizing: border-box;
@@ -466,7 +472,7 @@
   }
   .thumbnail-options {
     grid-column: 1 / -1;
-    padding: var(--space-7) var(--space-9) var(--space-9);
+    padding-top: var(--space-7);
     border-top: 1px solid var(--border-subtle);
     background: var(--surface-0);
   }

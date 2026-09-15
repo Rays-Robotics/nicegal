@@ -46,7 +46,7 @@
 
 <section class="indexing" aria-label="Library search">
   <div class="index-actions">
-    <strong>Search</strong>
+    <strong>Search indexing</strong>
     <button
       class="ui-button"
       disabled={!catalog.backendStatus.ready || busy || (!selection.ocr && !selection.image)}
@@ -81,7 +81,7 @@
           disabled={busy}
         /> Include text recognition</label
       >
-      <p id={hintId}>10x slower then regular indexing, but good for precise text searches</p>
+      <p id={hintId}>10x slower than regular indexing, but good for precise text searches</p>
     </div>
   </div>
   <p>Choices are saved for this library.</p>
@@ -125,7 +125,7 @@
           disabled={!catalog.backendStatus.ready || busy || (!selection.ocr && !selection.image)}
           onclick={() => commands.startIndex(root, true)}>Retry failed files</button
         >
-        <p>Retry failed files while keeping successful results.</p>
+        <p>Retry previously failed and excluded files</p>
       </div>
       {@render children?.()}
     </div>

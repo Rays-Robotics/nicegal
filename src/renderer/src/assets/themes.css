@@ -75,6 +75,7 @@
   --btn-border-active: #557d9e;
   --bevel-raised: inset 1px 1px #fff, inset -1px -1px #c3c9d1;
   --bevel-sunken: inset 1px 1px #8e98a6, inset -1px -1px #fff;
+  --toolbar-field-border: var(--btn-border);
   --control-height: 23px;
   --menubar-height: 23px;
   --toolbar-height: 37px;

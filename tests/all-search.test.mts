@@ -127,7 +127,7 @@ test("All publishes fast results, independent lanes, top-ten related tail and de
   );
   assert.deepEqual(
     view.sections?.map((section) => section.count),
-    [8, 0],
+    [8],
   );
   assert.equal(view.sources?.get("1"), "Names and text, Visual results");
   assert.equal(f.search.displaySnippets.get("1"), "needle", "All keeps literal OCR excerpts");
@@ -153,6 +153,31 @@ test("All publishes fast results, independent lanes, top-ten related tail and de
   f.search.minMatchPercentile = 100;
   assert.equal(f.search.apply(catalog).items.length, 8, "CLIP is unfiltered in Relevance");
   assert.equal(f.requests.length, before, "presentation changes reuse responses");
+  f.search.dispose();
+});
+
+test("All omits empty sections while searching and after results are filtered to the catalog", async () => {
+  const f = fixture();
+  const catalog = items();
+  f.search.query = "unmatched";
+  f.search.schedule("library", catalog, "modified");
+  await pause();
+  assert.deepEqual(f.search.apply(catalog).sections, []);
+  f.complete("literal", response([]));
+  f.complete("meaning", response([]));
+  f.complete("visual", response(["8", "missing"]));
+  await pause(5);
+  const view = f.search.apply(catalog);
+  assert.deepEqual(
+    view.sections?.map(({ key, start, count }) => ({ key, start, count })),
+    [{ key: "visual", start: 0, count: 1 }],
+  );
+  const empty = f.search.apply(catalog.filter((item) => item.id !== "8"));
+  assert.equal(empty.matchTotal, 0);
+  assert.deepEqual(empty.sections, []);
+  for (const mode of ["grid", "masonry", "justified"]) {
+    assert.equal(buildLayout(empty.items, 800, { mode }, empty.sections).dividers.length, 0);
+  }
   f.search.dispose();
 });
 
@@ -190,7 +215,7 @@ test("All caps related text at ten hits and appends it inside the literal sectio
   const view = f.search.apply(catalog);
   assert.deepEqual(
     view.sections?.map((section) => section.key),
-    ["literal", "visual"],
+    ["literal"],
   );
   assert.deepEqual(
     view.items.map((item) => item.id),
@@ -429,8 +454,8 @@ test("a malformed section response cannot corrupt successful results, including 
       ["2"],
     );
     assert.equal(view.sections?.[0].count, 1);
-    assert.equal(view.sections?.[1].count, 0);
-    assert.equal(view.sections?.[1].status, "Visual search unavailable. Try again.");
+    assert.equal(view.sections?.length, 1);
+    assert.match(f.search.allNotice, /Visual search unavailable/);
     assert.equal(f.search.pending, false);
     f.search.dispose();
   }

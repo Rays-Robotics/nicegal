@@ -90,6 +90,7 @@
   /* The search row is its own, roomier toolbar. Its field, text buttons, and icon controls use
      this one metric so chrome stays aligned as a theme changes its toolbar density. */
   --toolbar-control-height: 32px;
+  --gallery-size-control-width: 160px;
   --statusbar-height: 22px;
   --radius-sm: 2px;
   --radius-md: 2px;

@@ -1,16 +1,17 @@
 <script lang="ts">
   import Check from "@lucide/svelte/icons/check";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
-  import FileStack from "@lucide/svelte/icons/file-stack";
   import Grid3X3 from "@lucide/svelte/icons/grid-3x3";
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
   import Rows3 from "@lucide/svelte/icons/rows-3";
+  import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
 
   import type { Timeline } from "../../../shared/backend";
   import type { DividerGranularity, LayoutMode } from "../lib/gallery/types";
 
   import { popoverDismiss } from "../lib/popover-dismiss";
-
+  import { settings, settingsLimits } from "../lib/settings.svelte";
+  import SliderRow from "./SliderRow.svelte";
   let {
     layoutMode = $bindable(),
     sortField = $bindable(),
@@ -22,31 +23,28 @@
     dateHeaders: DividerGranularity;
     ranked?: boolean;
   } = $props();
-
-  type OpenMenu = "organize" | "view" | null;
   type LayoutOption = {
     value: LayoutMode;
     label: string;
     title: string;
     icon: typeof Rows3;
   };
-
   const layoutOptions: readonly LayoutOption[] = [
     {
       value: "justified",
-      label: "Justified layout",
+      label: "Justified",
       title: "Justified layout — image rows with a shared height",
       icon: Rows3,
     },
     {
       value: "masonry",
-      label: "Masonry layout",
+      label: "Masonry",
       title: "Masonry layout — variable-height image columns",
       icon: LayoutDashboard,
     },
     {
       value: "grid",
-      label: "Grid layout",
+      label: "Grid",
       title: "Grid layout — uniform image cells",
       icon: Grid3X3,
     },
@@ -56,63 +54,55 @@
     { value: "day", label: "Day" },
     { value: "month", label: "Month" },
   ];
-
-  let openMenu = $state<OpenMenu>(null);
-
-  const sortLabel = $derived(sortField === "modified" ? "file date" : "photo date");
-  const headerLabel = $derived(dateHeaders === "none" ? "none" : `date headers by ${dateHeaders}`);
-  const organizeLabel = $derived(
-    ranked
-      ? "Organize gallery: relevance order, date headers hidden"
-      : `Organize gallery: ${sortLabel}, ${headerLabel}`,
+  let openMenu = $state(false);
+  const sizeKey = $derived(
+    layoutMode === "justified"
+      ? "targetRowHeight"
+      : layoutMode === "masonry"
+        ? "masonryColumnWidth"
+        : "gridCellWidth",
   );
-
-  function toggleMenu(menu: Exclude<OpenMenu, null>): void {
-    openMenu = openMenu === menu ? null : menu;
+  const sizeTitle = $derived(
+    layoutMode === "grid" && $settings.gridColumns > 0
+      ? "Image size: adjusting returns to automatic columns"
+      : "Image size",
+  );
+  function setSize(value: number): void {
+    $settings[sizeKey] = value;
+    if (layoutMode === "grid") $settings.gridColumns = 0;
   }
-
   function chooseLayout(mode: LayoutMode): void {
     layoutMode = mode;
-    openMenu = null;
   }
-
   function chooseSort(field: Timeline): void {
     sortField = field;
   }
-
   function chooseHeaders(granularity: DividerGranularity): void {
     dateHeaders = granularity;
   }
 </script>
 
-{#snippet layoutChoices(menu = false)}
-  <div
-    class={[menu && "menu-choices", !menu && "app-toolbar-group"]}
-    role="radiogroup"
-    aria-label="Gallery layout"
-  >
+{#snippet layoutChoices()}
+  <div class="menu-choices" role="radiogroup" aria-label="Gallery layout">
     {#each layoutOptions as option (option.value)}
       <button
-        class={[layoutMode === option.value && "selected", !menu && "app-toolbar-button"]}
+        class:selected={layoutMode === option.value}
         type="button"
         role="radio"
         aria-checked={layoutMode === option.value}
-        aria-label={option.label}
+        aria-label={`${option.label} layout`}
         title={option.title}
         onclick={() => chooseLayout(option.value)}
       >
-        <option.icon size={16} strokeWidth={1.75} aria-hidden="true" />
-        {#if menu}<span>{option.label}</span>{/if}
+        <option.icon size={13} strokeWidth={1.75} aria-hidden="true" />
+        <span>{option.label}</span>
       </button>
     {/each}
   </div>
 {/snippet}
-
 {#snippet organizationChoices()}
-  <div class="organization-menu" aria-label="Organize gallery">
-    <h2>Organize</h2>
+  <div class="organization-menu" aria-label="Date organization">
     {#if ranked}<p>Date options apply when sorting by Date.</p>{/if}
-    <div class="menu-rule" role="separator"></div>
     <div class="organization-group" role="radiogroup" aria-label="Sort by">
       <h3>Sort by</h3>
       <div class="choice-row">
@@ -160,79 +150,68 @@
     </div>
   </div>
 {/snippet}
-
-<div class="view-controls" {@attach popoverDismiss(openMenu !== null, () => (openMenu = null))}>
-  <div class="expanded-controls">
-    {@render layoutChoices()}
-    <div class="app-toolbar-divider" role="separator"></div>
-    <div class="organize-control">
-      <button
-        class={[
-          "app-toolbar-button",
-          "app-toolbar-text-button",
-          openMenu === "organize" && "selected",
-        ]}
-        type="button"
-        aria-label={organizeLabel}
-        aria-haspopup="dialog"
-        aria-expanded={openMenu === "organize"}
-        title="Organize gallery"
-        onclick={() => toggleMenu("organize")}
-      >
-        <FileStack size={13} strokeWidth={1.75} aria-hidden="true" />
-        <span>Organize</span>
-      </button>
-      {#if openMenu === "organize"}
-        <div class="view-menu organize-popup" role="dialog" aria-label="Organize gallery">
-          {@render organizationChoices()}
-        </div>
-      {/if}
-    </div>
-  </div>
-
-  <div class="collapsed-control">
-    <button
-      class={["app-toolbar-button", "app-toolbar-text-button", openMenu === "view" && "selected"]}
-      type="button"
-      aria-haspopup="dialog"
-      aria-expanded={openMenu === "view"}
-      onclick={() => toggleMenu("view")}
-    >
-      View <ChevronDown size={13} aria-hidden="true" />
-    </button>
-    {#if openMenu === "view"}
-      <div class="view-menu collapsed-popup" role="dialog" aria-label="View options">
-        <section>
-          <h2>Layout</h2>
-          {@render layoutChoices(true)}
-        </section>
-        <div class="menu-rule" role="separator"></div>
-        {@render organizationChoices()}
+{#snippet imageSize(compact = false)}
+  <SliderRow
+    label="Image size"
+    {compact}
+    title={sizeTitle}
+    bind:value={() => $settings[sizeKey], setSize}
+    {...settingsLimits[sizeKey]}
+  />
+{/snippet}
+<div class="view-controls" {@attach popoverDismiss(openMenu, () => (openMenu = false))}>
+  <div class="toolbar-size">{@render imageSize(true)}</div>
+  <button
+    class={["app-toolbar-button", "app-toolbar-text-button", openMenu && "selected"]}
+    type="button"
+    aria-haspopup="dialog"
+    aria-expanded={openMenu}
+    onclick={() => (openMenu = !openMenu)}
+    ><SlidersHorizontal size={13} aria-hidden="true" /><span>View</span>
+    <ChevronDown size={13} aria-hidden="true" /></button
+  >
+  {#if openMenu}
+    <div class="view-menu" role="dialog" aria-label="View options">
+      <div class="menu-size">{@render imageSize()}</div>
+      <section>
+        <h2>Layout</h2>
+        {@render layoutChoices()}
+      </section>
+      <div class="numeric-options">
+        <label
+          >Spacing <input type="number" bind:value={$settings.gap} {...settingsLimits.gap} /></label
+        >
+        {#if layoutMode === "grid"}
+          <label
+            >Columns <input
+              type="number"
+              title="0 = automatic columns"
+              bind:value={$settings.gridColumns}
+              {...settingsLimits.gridColumns}
+            /></label
+          >
+          <p>0 = automatic columns. Adjusting image size restores automatic columns.</p>
+        {/if}
       </div>
-    {/if}
-  </div>
+      <div class="menu-rule" role="separator"></div>
+      {@render organizationChoices()}
+    </div>
+  {/if}
 </div>
 
 <style>
   .view-controls,
-  .expanded-controls,
   .choice-row {
     display: flex;
     align-items: center;
   }
-
   .view-controls {
     position: relative;
+    gap: var(--space-6);
     flex: none;
     align-self: flex-start;
     height: var(--toolbar-control-height);
   }
-
-  .expanded-controls {
-    height: 100%;
-    gap: var(--space-6);
-  }
-
   .organization-menu button:focus-visible,
   .menu-choices button:focus-visible {
     position: relative;
@@ -240,23 +219,17 @@
     outline: var(--focus-ring);
     outline-offset: var(--focus-ring-offset);
   }
-
-  .organize-control,
-  .collapsed-control {
-    position: relative;
-    height: 100%;
-  }
-
-  .collapsed-control {
-    display: none;
-  }
-
   .view-menu {
     position: absolute;
     z-index: var(--z-popover);
     top: calc(100% + var(--space-2));
     display: grid;
-    min-width: max-content;
+    width: 300px;
+    max-width: calc(100vw - var(--space-16));
+    max-height: calc(100vh - 100px);
+    overflow: auto;
+    right: 0;
+    gap: var(--space-6);
     padding: var(--space-6);
     border: 1px solid var(--border);
     background: var(--surface-0);
@@ -264,16 +237,6 @@
     color: var(--text-primary);
     font-size: var(--font-size-md);
   }
-
-  .organize-popup {
-    right: 0;
-  }
-
-  .collapsed-popup {
-    right: 0;
-    gap: var(--space-6);
-  }
-
   .view-menu h2,
   .view-menu h3 {
     margin: 0;
@@ -281,53 +244,40 @@
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-semibold);
   }
-
   .view-menu h2 {
     color: var(--text-primary);
     font-size: var(--font-size-md);
   }
-
   .view-menu section {
     display: grid;
     gap: var(--space-4);
   }
-
   .organization-group {
     display: grid;
     gap: var(--space-4);
   }
-
   .menu-rule {
     height: 1px;
     margin: 0 calc(var(--space-6) * -1);
     background: var(--border-subtle);
   }
-
   .organization-menu {
     display: grid;
     min-width: 220px;
     gap: var(--space-6);
   }
-
   .organization-menu p {
     margin: 0;
     color: var(--text-secondary);
     font-size: var(--font-size-sm);
   }
-
   .organization-menu button:disabled {
     opacity: 0.6;
     cursor: default;
   }
-
-  .organization-menu .menu-rule {
-    margin: 0;
-  }
-
   .choice-row {
     gap: var(--space-4);
   }
-
   .organization-menu button,
   .menu-choices button {
     display: inline-flex;
@@ -342,57 +292,81 @@
     text-align: left;
     cursor: pointer;
   }
-
   .organization-menu button {
     padding: 0 var(--space-4) 0 var(--space-2);
   }
-
   .organization-menu button:hover,
   .menu-choices button:hover {
     border-color: var(--btn-border-hover);
     background: var(--btn-face-hover);
     color: var(--text-primary);
   }
-
   .organization-menu button[aria-checked="true"] {
     border-color: var(--btn-border-active);
     background: var(--btn-face-active);
     box-shadow: var(--bevel-sunken);
     color: var(--text-primary);
   }
-
   .choice-mark {
     display: inline-flex;
     width: 13px;
     justify-content: center;
     color: var(--accent-active);
   }
-
   .menu-choices {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-3);
   }
-
   .menu-choices button {
     justify-content: center;
     gap: var(--space-4);
-    padding: var(--space-4) var(--space-6);
+    padding: var(--space-4) var(--space-3);
+    white-space: nowrap;
   }
-
   .menu-choices button.selected {
     border-color: var(--btn-border-active);
     background: var(--btn-face-active);
     box-shadow: var(--bevel-sunken);
     color: var(--text-primary);
   }
-
+  .toolbar-size {
+    width: var(--gallery-size-control-width);
+  }
+  .menu-size {
+    display: none;
+  }
+  .numeric-options {
+    display: grid;
+    gap: var(--space-6);
+  }
+  .numeric-options label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .numeric-options input {
+    width: 64px;
+    padding: var(--space-2) var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font: inherit;
+  }
+  .numeric-options input:focus-visible {
+    outline: var(--focus-ring);
+  }
+  .numeric-options p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+  }
   @media (max-width: 720px) {
-    .expanded-controls {
+    .toolbar-size {
       display: none;
     }
-
-    .collapsed-control {
+    .menu-size {
       display: block;
     }
   }

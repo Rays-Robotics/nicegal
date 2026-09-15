@@ -2,6 +2,7 @@
   /** A Win32-style trackbar: label + readout, a tick ruler, and a sunken groove with a tall thumb. */
   let {
     label,
+    compact = false,
     value = $bindable(),
     min,
     max,
@@ -13,6 +14,7 @@
     majorEvery = 5,
   }: {
     label: string;
+    compact?: boolean;
     value: number;
     min: number;
     max: number;
@@ -29,6 +31,11 @@
   type Tick = { fraction: number; major: boolean };
 
   const marks = $derived(buildTicks(min, max, tickStep, majorEvery));
+  let draggingPointer = $state<number | null>(null);
+
+  function endDrag(event: PointerEvent): void {
+    if (event.pointerId === draggingPointer) draggingPointer = null;
+  }
 
   function buildTicks(from: number, to: number, interval: number, major: number): Tick[] {
     if (!(interval > 0) || to <= from) return [];
@@ -43,9 +50,15 @@
   }
 </script>
 
-<div class={{ "slider-row": true, disabled }}>
+<svelte:window
+  onpointerup={endDrag}
+  onpointercancel={endDrag}
+  onblur={() => (draggingPointer = null)}
+/>
+
+<div class={{ "slider-row": true, disabled, compact }}>
   <div class="head">
-    <span class="label">{label}</span>
+    <span class="label">{compact ? "Size" : label}</span>
     <span class="readout">{value}{unit ? ` ${unit}` : ""}</span>
   </div>
   <div class="trackbar">
@@ -57,7 +70,24 @@
         ></span>
       {/each}
     </div>
-    <input type="range" aria-label={label} {min} {max} {step} {disabled} {title} bind:value />
+    <input
+      type="range"
+      aria-label={label}
+      aria-valuetext={`${value}${unit ? ` ${unit}` : ""}`}
+      {min}
+      {max}
+      {step}
+      {disabled}
+      {title}
+      bind:value
+      onpointerdown={(event) => {
+        if (!disabled && event.isPrimary && event.button === 0) draggingPointer = event.pointerId;
+      }}
+      onlostpointercapture={endDrag}
+    />
+    {#if compact && draggingPointer !== null && !disabled}
+      <span class="drag-value" aria-hidden="true">{value}{unit ? ` ${unit}` : ""}</span>
+    {/if}
   </div>
 </div>
 
@@ -66,6 +96,37 @@
     padding: var(--space-4) var(--space-9) var(--space-7);
     font-size: var(--font-size-md);
     color: var(--text-primary);
+  }
+
+  .slider-row.compact {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: var(--space-8);
+    padding: 0 var(--space-8);
+    height: var(--toolbar-control-height);
+    border: 1px solid var(--toolbar-field-border, var(--border-subtle));
+    border-radius: var(--radius-sm);
+    background: var(--surface-0);
+  }
+  .slider-row.compact:focus-within {
+    border-color: var(--btn-border-hover);
+  }
+  .compact .head {
+    padding: 0;
+    flex: none;
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+  }
+  .compact .readout,
+  .compact .ruler {
+    display: none;
+  }
+  .compact .trackbar {
+    flex: 1;
+    min-width: 0;
   }
 
   .slider-row.disabled {
@@ -92,6 +153,25 @@
 
   .trackbar {
     position: relative;
+  }
+
+  .drag-value {
+    position: absolute;
+    z-index: var(--z-popover);
+    top: calc(100% + var(--space-8));
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--space-3) var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-0);
+    box-shadow: var(--shadow-overlay);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    font-variant-numeric: tabular-nums;
+    line-height: var(--line-height-tight);
+    white-space: nowrap;
+    pointer-events: none;
   }
 
   .ruler {
@@ -124,6 +204,11 @@
     display: block;
     width: 100%;
     height: var(--thumb-height);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    accent-color: var(--accent);
     margin: 0;
     background: transparent;
     cursor: pointer;
@@ -134,8 +219,9 @@
   }
 
   input[type="range"]::-webkit-slider-runnable-track {
+    box-sizing: border-box;
     height: var(--track-height);
-    margin-top: calc((var(--thumb-height) - var(--track-height)) / 2);
+    margin: 0;
     background: var(--track-groove);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -145,6 +231,7 @@
   input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
+    box-sizing: border-box;
     width: var(--thumb-width);
     height: var(--thumb-height);
     /* Centre the thumb on the track: half the height difference, minus the track's border. */

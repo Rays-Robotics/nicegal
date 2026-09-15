@@ -9,7 +9,6 @@
   import { settings, settingsLimits, type GalleryTheme } from "../lib/settings.svelte";
   import AboutSettings from "./AboutSettings.svelte";
   import SearchModels from "./SearchModels.svelte";
-  import SliderRow from "./SliderRow.svelte";
 
   let {
     runtime,
@@ -85,7 +84,7 @@
 
   <nav class="settings-pages" aria-label="Settings pages">
     <button class="ui-button" aria-pressed={page === "gallery"} onclick={() => (page = "gallery")}
-      >Gallery</button
+      >General</button
     >
     <button class="ui-button" aria-pressed={page === "search"} onclick={() => (page = "search")}
       >Search</button
@@ -124,51 +123,6 @@
         >
       </section>
 
-      <section class="settings-group" aria-labelledby="layout-title">
-        <h2 id="layout-title">Layout</h2>
-        {#if $settings.layoutMode === "justified"}
-          <SliderRow
-            label="Row height"
-            bind:value={$settings.targetRowHeight}
-            {...settingsLimits.targetRowHeight}
-          />
-        {:else if $settings.layoutMode === "masonry"}
-          <SliderRow
-            label="Column width"
-            bind:value={$settings.masonryColumnWidth}
-            {...settingsLimits.masonryColumnWidth}
-          />
-        {:else}
-          <label class="row"
-            ><span>Columns</span><input
-              class="number-input"
-              type="number"
-              title="0 = auto"
-              min={settingsLimits.gridColumns.min}
-              max={settingsLimits.gridColumns.max}
-              step={settingsLimits.gridColumns.step}
-              bind:value={$settings.gridColumns}
-            /></label
-          >
-          <SliderRow
-            label="Cell size"
-            title="Used when columns is 0 (auto)"
-            disabled={$settings.gridColumns > 0}
-            bind:value={$settings.gridCellWidth}
-            {...settingsLimits.gridCellWidth}
-          />
-        {/if}
-        <label class="row"
-          ><span>Gap</span><input
-            class="number-input"
-            type="number"
-            min={settingsLimits.gap.min}
-            max={settingsLimits.gap.max}
-            step={settingsLimits.gap.step}
-            bind:value={$settings.gap}
-          /></label
-        >
-      </section>
       <section class="settings-group" aria-labelledby="updates-title">
         <h2 id="updates-title">Updates</h2>
         <label class="row">

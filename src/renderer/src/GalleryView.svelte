@@ -25,7 +25,7 @@
   import { useApplication } from "./lib/application.svelte";
   import { originalUrlOf } from "./lib/gallery/types";
   import { createLibraryViewController } from "./lib/library-view.svelte";
-  import { galleryLayoutState, settings } from "./lib/settings.svelte";
+  import { galleryLayoutState, settings, settingsLimits } from "./lib/settings.svelte";
 
   const application = useApplication();
   const { catalog, runtime, ocrSearch, jobs, orchestrator } = application.services;
@@ -101,6 +101,42 @@
     return () => {
       observer.disconnect();
     };
+  }
+  function galleryWheelZoom(element: HTMLDivElement): () => void {
+    let accumulated = 0;
+    let lastWheelTime = 0;
+    const onWheel = (event: WheelEvent): void => {
+      if (!event.ctrlKey || event.altKey || event.metaKey || view.detailItem || view.activeDialog) {
+        accumulated = 0;
+        return;
+      }
+      event.preventDefault();
+      const delta =
+        event.deltaY *
+        (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientHeight : 1);
+      if (!delta) return;
+      if (event.timeStamp - lastWheelTime > 250 || Math.sign(delta) !== Math.sign(accumulated))
+        accumulated = 0;
+      lastWheelTime = event.timeStamp;
+      accumulated += delta;
+      const steps = Math.trunc(accumulated / 80);
+      if (!steps) return;
+      accumulated -= steps * 80;
+      const key =
+        $settings.layoutMode === "justified"
+          ? "targetRowHeight"
+          : $settings.layoutMode === "masonry"
+            ? "masonryColumnWidth"
+            : "gridCellWidth";
+      const limit = settingsLimits[key];
+      $settings[key] = Math.max(
+        limit.min,
+        Math.min(limit.max, $settings[key] - steps * limit.step * 3),
+      );
+      if ($settings.layoutMode === "grid") $settings.gridColumns = 0;
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
   }
   onDestroy(() => view.dispose());
 </script>
@@ -231,7 +267,7 @@
 {#snippet workspace()}
   <div class="workspace-row">
     <div class="content-row" {@attach observeGallery}>
-      <div class="gallery-workspace" inert={Boolean(view.detailItem)}>
+      <div class="gallery-workspace" inert={Boolean(view.detailItem)} {@attach galleryWheelZoom}>
         <VirtualGallery
           bind:this={gallery}
           items={view.filteredItems}
