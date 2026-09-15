@@ -4,6 +4,13 @@ for one file. Tests use Node’s built-in runner and the existing Vite/Svelte co
 no separate test package is required. IPC and lifecycle tests mock Electron and do not
 connect to the running app or its catalog.
 
+For live gallery gesture checks, run `pnpm dev`, connect with `agent-browser connect 9222`,
+and execute `tests/helpers/gallery-input.browser.js` with `agent-browser eval -b` using
+the file's UTF-8 base64 text. This checks the actual ViSelect integration in the renderer,
+including item-drag exclusion, cancellation, lost mouseup, and subsequent clicks. It creates
+and removes an isolated DOM fixture without changing catalog data. Native OS drops also need
+a manual Explorer/file-manager check; the Node tests validate IPC payloads and late preparation.
+
 Rust tests remain with the backend crate. From `nicegal-server`, use
 `./dev.cmd test -p nicegal-server -- --test-threads=1` on Windows or
 `./dev.sh test -p nicegal-server -- --test-threads=1` on Linux. The existing API fixture

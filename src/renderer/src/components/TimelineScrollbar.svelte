@@ -29,10 +29,31 @@
     onSeek: (y: number) => void;
   } = $props();
 
-  type Tick = { y: number; label: string };
+  type Tick = { y: number; label: string; major: boolean };
 
   let trackEl: HTMLDivElement;
   let dragging = $state(false);
+
+  // Dates are ordered whenever the ruler is shown. Find each year's first item with a
+  // binary search, so a large library does not need a full scan when its layout changes.
+  const yearStarts = $derived.by(() => {
+    const starts: { index: number; year: number }[] = [];
+    if (!showTicks) return starts;
+    let index = 0;
+    while (index < items.length) {
+      const year = new Date(items[index].date).getFullYear();
+      starts.push({ index, year });
+      let low = index + 1;
+      let high = items.length;
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (new Date(items[middle].date).getFullYear() === year) low = middle + 1;
+        else high = middle;
+      }
+      index = low;
+    }
+    return starts;
+  });
 
   const contentHeight = $derived(Math.max(layout.height, 1));
   const thumbHeight = $derived(
@@ -58,6 +79,23 @@
   ): Tick[] {
     if (!galleryItems.length || !currentLayout.positions.length || trackHeight <= 0) return [];
     const content = Math.max(1, currentLayout.height);
+    // Keep labels inside the track and reserve room for years before adding minor dates.
+    const inset = Math.min(TICK_SPACING / 2, trackHeight / 2);
+    const trackY = (y: number): number =>
+      Math.max(inset, Math.min(trackHeight - inset, (y / content) * trackHeight));
+    const years: Tick[] = [];
+    for (const start of yearStarts) {
+      const position = currentLayout.positions[start.index];
+      if (!position) continue;
+      const y = trackY(position.y);
+      const previous = years[years.length - 1];
+      if (previous && y - previous.y < TICK_SPACING) {
+        // Tiny year sections share a range label instead of silently losing their year.
+        previous.label = `${previous.label.split("–")[0]}–${start.year}`;
+        continue;
+      }
+      years.push({ y, label: String(start.year), major: true });
+    }
     // Sample finely, then thin out by label and by spacing — the track is short, and tile
     // positions are content-space, so many samples collapse onto the same few track pixels.
     const step = Math.max(1, Math.floor(galleryItems.length / Math.max(2, trackHeight / 8)));
@@ -71,13 +109,16 @@
       if (label === lastLabel) continue;
       // Content space -> track space. Without this, every tick past the first lands below the
       // track and is clipped away.
-      const y = (position.y / content) * trackHeight;
+      const y = trackY(position.y);
       if (y - lastY < TICK_SPACING) continue;
+      if (years.some((year) => Math.abs(year.y - y) < TICK_SPACING)) continue;
       lastLabel = label;
       lastY = y;
-      result.push({ y, label });
+      result.push({ y, label, major: false });
     }
-    return result;
+    // The first year (or compressed year range) only describes the start of the library.
+    // Keep its spacing reserved, but show labels only for the later year sections.
+    return [...years.slice(1), ...result].sort((a, b) => a.y - b.y);
   }
 
   function currentLabel(
@@ -130,7 +171,7 @@
   onpointercancel={onpointerup}
 >
   {#each ticks as tick (`${tick.label}@${tick.y}`)}
-    <div class="tick" style:top={`${tick.y}px`}>
+    <div class={{ tick: true, "year-tick": tick.major }} style:top={`${tick.y}px`}>
       <span class="tick-mark"></span>
       <span class="tick-label">{tick.label}</span>
     </div>
@@ -206,9 +247,25 @@
       transform var(--duration-fast) ease;
   }
 
-  .timeline-scrollbar:hover .tick-label {
+  .timeline-scrollbar:hover .tick-label,
+  .timeline-scrollbar:focus-visible .tick-label,
+  .year-tick .tick-label {
     opacity: 1;
     transform: translateX(0);
+  }
+
+  .year-tick .tick-mark {
+    width: 100%;
+    height: var(--space-2);
+    background: var(--tick-mark-major);
+  }
+
+  .year-tick .tick-label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-normal);
+    color: var(--text-primary);
+    background: var(--surface-1);
+    border-color: var(--tick-mark-major);
   }
 
   .thumb {

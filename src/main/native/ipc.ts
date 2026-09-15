@@ -1,9 +1,19 @@
-import { BrowserWindow, dialog, Menu, shell, type MenuItemConstructorOptions } from "electron";
+import {
+  BrowserWindow,
+  dialog,
+  Menu,
+  nativeImage,
+  shell,
+  type MenuItemConstructorOptions,
+  type WebContents,
+} from "electron";
+import { randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 
 import type { NicegalServerClient } from "../backend/nicegal-server-client";
 import type { IpcSenderValidator } from "../ipc";
 
+import appIcon from "../../../resources/icon.png?asset";
 import licenseInformation from "../../../resources/licenses/license-information.html?asset&asarUnpack";
 import { IPC_CHANNELS } from "../../shared/ipc-channels";
 import { handleTrustedIpc } from "../ipc";
@@ -23,6 +33,55 @@ export interface NativeIpcContext {
 
 /** Main-process capabilities backed by Electron/OS APIs rather than the search backend. */
 export function registerNativeIpc(context: NativeIpcContext): void {
+  // One preparation per renderer. Tokens keep resolved paths on the trusted side and prevent
+  // an older lookup from replacing a newer gesture while the backend is responding.
+  const drags = new WeakMap<
+    WebContents,
+    { token: string; files: ResolvedFileTarget[]; expires: number }
+  >();
+  const dragIcon = nativeImage.createFromPath(appIcon).resize({ width: 32, height: 32 });
+  handleTrustedIpc(
+    IPC_CHANNELS.native.prepareFileDrag,
+    context.isTrustedSender,
+    async (event, value) => {
+      if (!context.client) throw new Error("File dragging requires the catalog backend");
+      const ids = parseAssetIds(value, 100_000);
+      const drag = {
+        token: randomUUID(),
+        files: [] as ResolvedFileTarget[],
+        expires: Date.now() + 30_000,
+      };
+      drags.set(event.sender, drag);
+      const files: ResolvedFileTarget[] = [];
+      for (let offset = 0; offset < ids.length; offset += 512) {
+        files.push(...(await resolveFileTargets(context.client, ids.slice(offset, offset + 512))));
+        if (drags.get(event.sender) !== drag || event.sender.isDestroyed())
+          throw new Error("File drag was superseded");
+      }
+      if (files.length !== ids.length)
+        throw new Error(
+          "Some selected files are no longer available. Refresh the library and try again.",
+        );
+      if (drags.get(event.sender) !== drag || event.sender.isDestroyed())
+        throw new Error("File drag was superseded");
+      drag.files = files;
+      return drag.token;
+    },
+  );
+  handleTrustedIpc(IPC_CHANNELS.native.startFileDrag, context.isTrustedSender, (event, token) => {
+    const drag = drags.get(event.sender);
+    if (!drag || drag.token !== token || !drag.files.length || drag.expires < Date.now()) {
+      throw new Error("File drag expired. Drag the selection again.");
+    }
+    drags.delete(event.sender);
+    // Electron on Windows/Linux advertises COPY | LINK, never MOVE. There is deliberately no
+    // source-file cleanup. The user accepted shortcuts as well as copies (2026-09-14).
+    event.sender.startDrag({
+      file: drag.files[0].path,
+      files: drag.files.map((file) => file.path),
+      icon: dragIcon,
+    });
+  });
   handleTrustedIpc(
     IPC_CHANNELS.native.openExternalUrl,
     context.isTrustedSender,
@@ -99,18 +158,18 @@ export function registerNativeIpc(context: NativeIpcContext): void {
   );
 }
 
-function parseAssetIds(value: unknown): string[] {
+function parseAssetIds(value: unknown, limit = 512): string[] {
   if (!value || typeof value !== "object" || !("assetIds" in value)) {
-    throw new TypeError("File menu request must contain assetIds");
+    throw new TypeError("File action request must contain assetIds");
   }
   const assetIds = (value as { assetIds?: unknown }).assetIds;
-  if (!Array.isArray(assetIds) || assetIds.length < 1 || assetIds.length > 512) {
-    throw new TypeError("File menu requires between 1 and 512 asset IDs");
+  if (!Array.isArray(assetIds) || assetIds.length < 1 || assetIds.length > limit) {
+    throw new TypeError(`File actions require between 1 and ${limit} asset IDs`);
   }
   const unique = new Set<string>();
   for (const id of assetIds) {
     if (typeof id !== "string" || !/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) {
-      throw new TypeError("File menu asset IDs must be safe positive decimal strings");
+      throw new TypeError("File action asset IDs must be safe positive decimal strings");
     }
     unique.add(id);
   }

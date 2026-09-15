@@ -1,7 +1,12 @@
 import { SvelteMap } from "svelte/reactivity";
 import { get } from "svelte/store";
 
-import type { BackendStatus, GalleryAsset, Timeline } from "../../../shared/backend";
+import type {
+  BackendStatus,
+  GalleryAsset,
+  ImageEmbeddingCoverage,
+  Timeline,
+} from "../../../shared/backend";
 
 import { LIBRARIES_STORAGE_KEY, LIBRARY_ROOT_STORAGE_KEY } from "./constants";
 import { errorMessage } from "./errors";
@@ -21,6 +26,7 @@ export type LibraryViewStatePatch = Partial<Pick<LibraryRecord, "query" | "scrol
 
 /** Independent catalog and embedding counts rendered beside each registered library. */
 export interface LibraryRowStatus {
+  imageCoverage?: ImageEmbeddingCoverage | null;
   cataloged: number;
   indexed: number;
   embedded: number;
@@ -283,8 +289,21 @@ export class CatalogController {
       if (generation !== this.generation) return;
       if (this.catalogRevision && revision !== this.catalogRevision) await this.refresh();
       else this.catalogRevision = revision;
+      const root = this.selectedRoot;
+      if (root && generation === this.generation) {
+        const imageCoverage = await window.nicegal.backend.getImageEmbeddingCoverage(root);
+        if (generation === this.generation && root === this.selectedRoot) {
+          this.updateLibraryStatus(root, { ...this.statusFor(root), imageCoverage });
+        }
+      }
     } catch (error) {
       console.warn("Catalog revision poll failed", error);
+      if (generation === this.generation && this.selectedRoot) {
+        this.updateLibraryStatus(this.selectedRoot, {
+          ...this.statusFor(this.selectedRoot),
+          imageCoverage: null,
+        });
+      }
     } finally {
       this.revisionPollPending = false;
     }
@@ -340,14 +359,16 @@ export class CatalogController {
                     throw new Error("Invalid catalog status response");
                   return count;
                 });
-          const [cataloged, rawCoverage] = await Promise.all([
+          const [cataloged, rawCoverage, imageCoverage] = await Promise.all([
             catalogedRequest,
             window.nicegal.backend.getTextEmbeddingCoverage(root),
+            window.nicegal.backend.getImageEmbeddingCoverage(root),
           ]);
           const coverage = normalizeTextEmbeddingCoverage(rawCoverage);
           if (!this.isCurrentLibraryStatusRequest(root, generation, rootGeneration)) return;
           this.updateLibraryStatus(root, {
             cataloged,
+            imageCoverage,
             ...coverage,
             loading: false,
             error: null,
@@ -356,6 +377,7 @@ export class CatalogController {
           if (!this.isCurrentLibraryStatusRequest(root, generation, rootGeneration)) return;
           this.updateLibraryStatus(root, {
             ...this.statusFor(root),
+            imageCoverage: null,
             loading: false,
             error: errorMessage(error),
           });

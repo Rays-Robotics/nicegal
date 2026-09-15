@@ -4,6 +4,7 @@ import type {
   BackendStatus,
   AssetMetadata,
   TextEmbeddingCoverage,
+  ImageEmbeddingCoverage,
   EnsureThumbnailsRequest,
   EnsureThumbnailsResponse,
   ExecutionProviderId,
@@ -74,6 +75,9 @@ const backend: NicegalBridge["backend"] = {
   getTextEmbeddingCoverage(root: string): Promise<TextEmbeddingCoverage> {
     return ipcRenderer.invoke(IPC_CHANNELS.backend.getTextEmbeddingCoverage, root);
   },
+  getImageEmbeddingCoverage(root: string): Promise<ImageEmbeddingCoverage> {
+    return ipcRenderer.invoke(IPC_CHANNELS.backend.getImageEmbeddingCoverage, root);
+  },
   getOcrModels(): Promise<OcrModelsResponse> {
     return ipcRenderer.invoke(IPC_CHANNELS.backend.getOcrModels);
   },
@@ -135,6 +139,8 @@ const backend: NicegalBridge["backend"] = {
 };
 
 const native: NativeBridge = {
+  prepareFileDrag: (request) => ipcRenderer.invoke(IPC_CHANNELS.native.prepareFileDrag, request),
+  startFileDrag: (token) => ipcRenderer.invoke(IPC_CHANNELS.native.startFileDrag, token),
   openExternalUrl(url: string): Promise<void> {
     return ipcRenderer.invoke(IPC_CHANNELS.native.openExternalUrl, url);
   },

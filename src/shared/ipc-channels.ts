@@ -18,6 +18,7 @@ export const IPC_CHANNELS = {
     countAssets: "backend:count-assets",
     catalogRevision: "backend:catalog-revision",
     getTextEmbeddingCoverage: "backend:get-text-embedding-coverage",
+    getImageEmbeddingCoverage: "backend:get-image-embedding-coverage",
     getOcrModels: "backend:get-ocr-models",
     getSearchModels: "backend:get-search-models",
     search: "backend:search",
@@ -37,5 +38,7 @@ export const IPC_CHANNELS = {
     chooseVisualSearchImage: "native:choose-visual-search-image",
     addToVisualSearch: "native:add-to-visual-search",
     showFileContextMenu: "native:show-file-context-menu",
+    prepareFileDrag: "native:prepare-file-drag",
+    startFileDrag: "native:start-file-drag",
   },
 } as const;

@@ -153,6 +153,12 @@ export interface TextEmbeddingCoverage {
   lastIndexedAt: number | null;
 }
 
+/** Current CLIP coverage for cataloged images under one root, excluding videos. */
+export interface ImageEmbeddingCoverage {
+  total: number;
+  indexed: number;
+}
+
 export interface SearchResult {
   assetId: string;
   snippet: string;
@@ -422,6 +428,7 @@ export interface BackendBridge {
   /** Abort all current searches and close their session. The next session must be newer. */
   cancelSearch(): Promise<void>;
   getTextEmbeddingCoverage(root: string): Promise<TextEmbeddingCoverage>;
+  getImageEmbeddingCoverage(root: string): Promise<ImageEmbeddingCoverage>;
   startJob(request: JobRequest): Promise<JobSnapshot>;
   cancelJob(jobId: string): Promise<JobSnapshot>;
   subscribeJob(
@@ -439,6 +446,8 @@ export interface NativeBridge {
   chooseVisualSearchImage(): Promise<ExternalVisualReference | null>;
   onAddToVisualSearch(listener: (assetIds: string[], replace: boolean) => void): () => void;
   showFileContextMenu(request: NativeFileMenuRequest): Promise<void>;
+  prepareFileDrag(request: NativeFileMenuRequest): Promise<string>;
+  startFileDrag(token: string): Promise<void>;
 }
 
 export interface NicegalBridge {

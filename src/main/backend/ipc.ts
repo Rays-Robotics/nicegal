@@ -154,6 +154,13 @@ export function registerBackendIpc(context: BackendIpcContext): void {
     (_event, value: unknown) => requireBackend().countAssets(validateAbsoluteRoot(value)),
   );
   handleTrustedIpc(
+    IPC_CHANNELS.backend.getImageEmbeddingCoverage,
+    context.isTrustedSender,
+    (_event, value: unknown) => {
+      return requireBackend().getImageEmbeddingCoverage(validateAbsoluteRoot(value));
+    },
+  );
+  handleTrustedIpc(
     IPC_CHANNELS.backend.getTextEmbeddingCoverage,
     context.isTrustedSender,
     (_event, value: unknown) => {

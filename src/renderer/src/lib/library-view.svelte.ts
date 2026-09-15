@@ -42,6 +42,7 @@ export interface LibraryViewController {
   switchToMeaningSearch(): void;
   openDetail(index: number): void;
   openFileMenu(index: number): void;
+  startFileDrag(index: number, isCurrent: () => boolean): void;
   selectGalleryItem(index: number, modifiers: SelectionModifiers): void;
   beginGalleryMarquee(modifiers: SelectionModifiers): void;
   updateGalleryMarquee(ids: readonly string[]): void;
@@ -228,6 +229,22 @@ export function createLibraryViewController(
     const item = filteredItems[index];
     if (!item) return;
     gallerySelection.select(item.id, filteredItemIds, modifiers);
+  }
+  function startFileDrag(index: number, isCurrent: () => boolean): void {
+    const item = filteredItems[index];
+    if (!item) return;
+    gallerySelection.endMarquee();
+    if (!gallerySelection.ids.has(item.id)) {
+      gallerySelection.select(item.id, filteredItemIds, { toggle: false, extend: false });
+    }
+    const assetIds = filteredItemIds.filter((id) => gallerySelection.ids.has(id));
+    const selection = gallerySelection;
+    const visibleIds = filteredItemIds;
+    const canStart = (): boolean =>
+      isCurrent() && gallerySelection === selection && filteredItemIds === visibleIds;
+    void commands.startFileDrag(assetIds, canStart).catch((error: unknown) => {
+      if (canStart()) jobs.error = errorMessage(error);
+    });
   }
   function beginGalleryMarquee(modifiers: SelectionModifiers): void {
     gallerySelection.beginMarquee(modifiers);
@@ -469,6 +486,7 @@ export function createLibraryViewController(
     switchToMeaningSearch,
     openDetail,
     openFileMenu,
+    startFileDrag,
     selectGalleryItem,
     beginGalleryMarquee,
     updateGalleryMarquee,

@@ -3,12 +3,12 @@
   Gallery workspace status segments. AppShell owns the window's one physical status bar and lays
   these out left to right, divided by hairlines the way an Explorer status bar is:
 
-      [catcopy] [84 / 103 items] [provider] … [transient message] [◌ 98 / 103 indexed]
+      [catcopy] [84 / 103 items] [provider] … [transient message] [98 / 103 indexed]
 
   The item count lives here rather than inside the search field: search-bar width is scarce and
   the status bar has spare width by construction. One segment carries both readings — the library
   size at rest, matched-of-total during a search — so there is no duplicated denominator. Indexing
-  sits at the far right, where its changing rate can use the otherwise spare space without
+  sits at the far right, where image-search coverage can use the otherwise spare space without
   crowding stable library and selection totals.
 -->
 <script lang="ts">
@@ -29,8 +29,6 @@
     backendReady,
     backendError,
     runtime,
-    indexingRunning,
-    indexRate,
     onsettings,
   }: {
     libraryName: string;
@@ -48,10 +46,6 @@
     backendReady: boolean;
     backendError: string | null;
     runtime: RuntimeController;
-    /** Canonical job activity, settled by JobTracker as soon as a terminal snapshot arrives. */
-    indexingRunning: boolean;
-    /** OCR throughput sampled by JobTracker at the ordered snapshot boundary. */
-    indexRate: number | null;
     onsettings: () => void;
   } = $props();
 
@@ -93,11 +87,6 @@
     return `Execution provider: ${active}`;
   });
 
-  const fullDateFormatter = new Intl.DateTimeFormat(undefined, {
-    dateStyle: "long",
-    timeStyle: "short",
-  });
-
   const itemsText = $derived(
     filtering
       ? `${matchedCount.toLocaleString()} / ${totalCount.toLocaleString()} items`
@@ -109,38 +98,13 @@
       : undefined,
   );
 
-  const indexRateText = $derived(
-    !indexingRunning || indexRate === null
-      ? null
-      : `${indexRate.toLocaleString(undefined, { maximumFractionDigits: 1 })} images/s`,
-  );
-
-  /** Milliseconds, or null when the backend has no timestamp for this root yet. */
-  const lastIndexed = $derived(
-    status?.lastIndexedAt != null ? new Date(status.lastIndexedAt * 1000) : null,
-  );
-  const indexCounts = $derived(
-    status && !status.error && status.indexed > 0
-      ? `${status.indexed.toLocaleString()} / ${status.cataloged.toLocaleString()} with text`
-      : "",
-  );
-  // Live throughput belongs to the job, not the last saved coverage snapshot. Fresh OCR
-  // libraries may still report zero indexed files until the job finishes.
-  const indexText = $derived([indexCounts, indexRateText].filter(Boolean).join(" · "));
-  const indexTitle = $derived.by(() => {
-    const counts =
-      status && !status.error
-        ? `OCR ${status.indexed.toLocaleString()} / ${status.cataloged.toLocaleString()} · Meaning ${status.embedded.toLocaleString()} / ${status.indexed.toLocaleString()} · ${status.pending.toLocaleString()} not embedded — details in Libraries`
-        : "";
-    const activity = indexingRunning
-      ? indexRateText
-        ? `Indexing active · ${indexRateText}`
-        : "Indexing active"
-      : "Indexing idle";
-    const date = lastIndexed
-      ? `\nNewest indexed file: ${fullDateFormatter.format(lastIndexed)}`
-      : "";
-    return [counts, activity].filter(Boolean).join(" · ") + date;
+  const indexText = $derived.by(() => {
+    const coverage = status?.imageCoverage;
+    if (!coverage) return "";
+    const indexed = coverage.indexed.toLocaleString();
+    return coverage.indexed === coverage.total
+      ? `${indexed} indexed`
+      : `${indexed} / ${coverage.total.toLocaleString()} indexed`;
   });
 </script>
 
@@ -171,12 +135,8 @@
     ></span>Searching…{:else}{message ?? ""}{/if}
 </span>
 {#if hasLibrary}
-  <!-- Keep live throughput visible even before OCR coverage arrives or if its refresh fails. -->
   {#if indexText}
-    <span class="status-segment count index-status" title={indexTitle}>
-      <span class:active={indexingRunning} class="index-activity-indicator" aria-hidden="true"
-      ></span>{indexText}
-    </span>
+    <span class="status-segment count index-status">{indexText}</span>
   {/if}
 {/if}
 

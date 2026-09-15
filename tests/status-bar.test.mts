@@ -54,7 +54,7 @@ function statusMarkup(
   }).body;
 }
 
-test("live indexing rate remains visible without a saved OCR count", () => {
+test("unknown image coverage does not show OCR counts or throughput", () => {
   for (const status of [
     empty,
     undefined,
@@ -62,15 +62,30 @@ test("live indexing rate remains visible without a saved OCR count", () => {
     { ...empty, error: "Status unavailable" },
   ]) {
     const html = statusMarkup(status, 12.5);
-    assert.match(html, /index-status/);
-    assert.match(html, /12[.,]5 images\/s/);
+    assert.doesNotMatch(html, /index-status/);
+    assert.doesNotMatch(html, /images\/s/);
   }
-  assert.match(statusMarkup(empty, 0), /0 images\/s/);
+  assert.doesNotMatch(statusMarkup({ ...empty, indexed: 100 }, 0), /index-status/);
 });
 
-test("idle empty libraries stay quiet; completed coverage remains visible", () => {
-  assert.doesNotMatch(statusMarkup(empty, null, false), /index-status/);
-  assert.doesNotMatch(statusMarkup(empty, 12.5, false), /images\/s/);
-  const html = statusMarkup({ ...empty, indexed: 25 }, null, false);
-  assert.match(html, /25 \/ 100 with text/);
+test("image coverage is independent of OCR and uses the image denominator", () => {
+  const html = statusMarkup({ ...empty, imageCoverage: { indexed: 25, total: 80 } }, 12.5);
+  assert.match(html, /25 \/ 80 indexed/);
+  assert.doesNotMatch(html, /index-status[^>]*title=|images\/s|with text/);
+});
+
+test("complete image coverage collapses to one number, including zero", () => {
+  for (const count of [0, 80]) {
+    const html = statusMarkup(
+      { ...empty, imageCoverage: { indexed: count, total: count } },
+      null,
+      false,
+    );
+    assert.match(html, new RegExp(`>${count} indexed<`));
+    assert.doesNotMatch(html, /index-status[^>]*title=/);
+  }
+  assert.match(
+    statusMarkup({ ...empty, imageCoverage: { indexed: 0, total: 80 } }, null),
+    /0 \/ 80 indexed/,
+  );
 });

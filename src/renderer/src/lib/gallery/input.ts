@@ -9,6 +9,7 @@ interface GalleryInputCallbacks {
   onopen(index: number): void;
   onselect(index: number, modifiers: SelectionModifiers): void;
   onfilemenu(index: number): void;
+  onfiledrag(index: number, isCurrent: () => boolean): void;
   onclear(): void;
   onmarqueestart(modifiers: SelectionModifiers): void;
   onmarqueechange(ids: readonly string[]): void;
@@ -21,11 +22,23 @@ export function createGalleryInput(callbacks: GalleryInputCallbacks): {
   activate(tile: PoolTile, event: MouseEvent): void;
   onFrameKeydown(event: KeyboardEvent, tile: PoolTile): void;
   openFileMenu(event: MouseEvent, tile: PoolTile): void;
+  startFileDrag(event: DragEvent, tile: PoolTile): void;
   onViewportPointerDown(event: PointerEvent): void;
   onViewportPointerUp(event: PointerEvent): void;
 } {
   const BACKGROUND_CLICK_SLOP_PX = 4;
+  let gesture = 0;
+  let suppressActivation = false;
+  function startFileDrag(event: DragEvent, tile: PoolTile): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "copyLink";
+    const current = ++gesture;
+    suppressActivation = true;
+    callbacks.onfiledrag(tile.index, () => gesture === current);
+  }
   function activate(tile: PoolTile, event: MouseEvent): void {
+    if (suppressActivation && event.detail !== 0) return;
     const modifiers = { toggle: event.ctrlKey || event.metaKey, extend: event.shiftKey };
     if (modifiers.toggle || modifiers.extend) {
       callbacks.onselect(tile.index, modifiers);
@@ -51,18 +64,19 @@ export function createGalleryInput(callbacks: GalleryInputCallbacks): {
 
   /** Press position of a potential background click; consumed on the matching pointerup. A tile
    * press leaves it null so the tile's own activation path owns that interaction. */
-  let backgroundPress: { x: number; y: number } | null = null;
+  let backgroundPress: { x: number; y: number; pointerId: number } | null = null;
 
   function onViewportPointerDown(event: PointerEvent): void {
+    backgroundPress = null;
     if (event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest(".gallery-frame")) return;
-    backgroundPress = { x: event.clientX, y: event.clientY };
+    backgroundPress = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
   }
 
   function onViewportPointerUp(event: PointerEvent): void {
     const start = backgroundPress;
     backgroundPress = null;
-    if (!start) return;
+    if (!start || event.button !== 0 || event.pointerId !== start.pointerId) return;
     const travelled = Math.abs(event.clientX - start.x) + Math.abs(event.clientY - start.y);
     // A marquee drag (or any drag) ends with a pointerup too; only a genuine click clears.
     if (travelled > BACKGROUND_CLICK_SLOP_PX) return;
@@ -85,6 +99,7 @@ export function createGalleryInput(callbacks: GalleryInputCallbacks): {
   }
 
   const attach: Attachment<HTMLDivElement> = (viewport) => {
+    let marqueeArmed = false;
     const selectionArea = new SelectionArea({
       container: viewport,
       startAreas: [viewport],
@@ -105,7 +120,16 @@ export function createGalleryInput(callbacks: GalleryInputCallbacks): {
         touch: false,
       },
     })
+      .on("beforestart", ({ event }) => {
+        // Decide ownership at the press, before either drag crosses its threshold.
+        marqueeArmed = !(
+          event?.target instanceof Element && event.target.closest(".gallery-frame")
+        );
+        return marqueeArmed;
+      })
       .on("start", ({ event, selection }) => {
+        backgroundPress = null;
+        suppressActivation = true;
         // ViSelect stores elements between drags. A recycled pooled element must never carry a
         // previous asset's state, so it is just a hit-testing engine for this drag.
         selection.clearSelection(true, true);
@@ -115,6 +139,7 @@ export function createGalleryInput(callbacks: GalleryInputCallbacks): {
         callbacks.onmarqueechange(selectableIds(store.selected));
       })
       .on("stop", ({ selection }) => {
+        marqueeArmed = false;
         selection.clearSelection(true, true);
         callbacks.onmarqueeend();
       });
@@ -125,25 +150,59 @@ export function createGalleryInput(callbacks: GalleryInputCallbacks): {
      * until the next drag. `cancel(true)` tears down the in-progress drag and fires `stop` so the
      * app's marquee snapshot is closed as well.
      */
-    const cancelMarqueeOnFocusLoss = (): void => {
+    const cancelGesture = (): void => {
+      gesture++;
+      backgroundPress = null;
+      if (!marqueeArmed) return;
+      marqueeArmed = false;
       selectionArea.cancel(true);
     };
     const cancelMarqueeOnHidden = (): void => {
-      if (document.hidden) selectionArea.cancel(true);
+      if (document.hidden) cancelGesture();
     };
-    window.addEventListener("blur", cancelMarqueeOnFocusLoss);
+    const onMouseMove = (event: MouseEvent): void => {
+      // Mouseup outside the window may be lost. Cancel before ViSelect sees the return move.
+      if ((event.buttons & 1) === 0) cancelGesture();
+      const start = backgroundPress;
+      if (
+        start &&
+        Math.abs(event.clientX - start.x) + Math.abs(event.clientY - start.y) >
+          BACKGROUND_CLICK_SLOP_PX
+      )
+        backgroundPress = null;
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") cancelGesture();
+    };
+    const onPointerDown = (): void => {
+      cancelGesture();
+      suppressActivation = false;
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("mousemove", onMouseMove, true);
+    window.addEventListener("blur", cancelGesture);
+    window.addEventListener("pointercancel", cancelGesture);
+    window.addEventListener("dragstart", cancelGesture, true);
+    window.addEventListener("dragend", cancelGesture, true);
     document.addEventListener("visibilitychange", cancelMarqueeOnHidden);
 
     const resetPress = (): void => {
+      gesture++;
       backgroundPress = null;
     };
-    viewport.addEventListener("pointercancel", resetPress);
-    window.addEventListener("blur", resetPress);
+    window.addEventListener("pointerup", resetPress);
     return () => {
+      cancelGesture();
       selectionArea.destroy();
-      viewport.removeEventListener("pointercancel", resetPress);
-      window.removeEventListener("blur", resetPress);
-      window.removeEventListener("blur", cancelMarqueeOnFocusLoss);
+      window.removeEventListener("pointerup", resetPress);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("mousemove", onMouseMove, true);
+      window.removeEventListener("blur", cancelGesture);
+      window.removeEventListener("pointercancel", cancelGesture);
+      window.removeEventListener("dragstart", cancelGesture, true);
+      window.removeEventListener("dragend", cancelGesture, true);
       document.removeEventListener("visibilitychange", cancelMarqueeOnHidden);
     };
   };
@@ -152,6 +211,7 @@ export function createGalleryInput(callbacks: GalleryInputCallbacks): {
     activate,
     onFrameKeydown,
     openFileMenu,
+    startFileDrag,
     onViewportPointerDown,
     onViewportPointerUp,
   };

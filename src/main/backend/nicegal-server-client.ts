@@ -2,6 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import type {
   TextEmbeddingCoverage,
+  ImageEmbeddingCoverage,
   GalleryAsset,
   AssetMetadata,
   Timeline,
@@ -103,6 +104,17 @@ export class NicegalServerClient {
       body: JSON.stringify({ executionProvider }),
     });
     return (await response.json()) as RuntimeStatus;
+  }
+
+  async getImageEmbeddingCoverage(root: string): Promise<ImageEmbeddingCoverage> {
+    const url = new URL("/v1/image-embeddings", this.endpoint);
+    url.searchParams.set("root", root);
+    const response = await this.request(url, { method: "GET" });
+    const value = (await response.json()) as Partial<ImageEmbeddingCoverage>;
+    if (!isCount(value.total) || !isCount(value.indexed) || value.indexed > value.total) {
+      throw new Error("nicegal-server returned invalid image embedding coverage");
+    }
+    return { total: value.total, indexed: value.indexed };
   }
 
   async getTextEmbeddingCoverage(root: string): Promise<TextEmbeddingCoverage> {
@@ -224,7 +236,7 @@ export class NicegalServerClient {
   }
 
   /** Resolves a bounded ID batch through the Rust catalog API. This is the shared path boundary
-   * for OS integrations such as context-menu actions and, later, external file dragging. */
+   * for OS integrations such as context-menu actions and external file dragging. */
   async resolveAssets(assetIds: readonly string[]): Promise<ResolveAssetsResponse> {
     const wireAssetIds = assetIds.map((id) => {
       const value = Number(id);

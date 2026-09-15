@@ -254,6 +254,7 @@
           onmarqueeend={view.endGalleryMarquee}
           onopen={view.openDetail}
           onfilemenu={view.openFileMenu}
+          onfiledrag={view.startFileDrag}
           onclear={() => view.gallerySelection.clear()}
         /><TimelineScrollbar
           items={view.filteredItems}
@@ -355,8 +356,6 @@
         backendReady={catalog.backendStatus.ready}
         backendError={catalog.backendStatus.error}
         {runtime}
-        indexingRunning={view.indexingRunning}
-        indexRate={jobs.indexRate}
         onsettings={() => {
           settingsPage = "search";
           view.openSettingsDialog();

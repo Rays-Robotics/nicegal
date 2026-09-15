@@ -27,6 +27,7 @@ export class GallerySelection {
   select(id: string, visibleIds: readonly string[], modifiers: SelectionModifiers): void {
     const index = visibleIds.indexOf(id);
     if (index < 0) return;
+    this.endMarquee();
 
     if (modifiers.extend && this.anchorId) {
       const anchorIndex = visibleIds.indexOf(this.anchorId);
@@ -52,6 +53,7 @@ export class GallerySelection {
   }
 
   clear(): void {
+    this.endMarquee();
     this.ids.clear();
     this.anchorId = null;
   }
@@ -100,8 +102,13 @@ export class GallerySelection {
 
   /** Remove assets that disappeared from the catalog, without losing selections hidden by a filter. */
   retainCatalogAssets(items: readonly { id: string }[]): void {
-    if (this.ids.size === 0) return;
+    if (this.ids.size === 0 && !this.anchorId && !this.marquee) return;
     const currentIds = new SvelteSet(items.map((item) => item.id));
+    if (this.marquee) {
+      for (const id of this.marquee.baseline) {
+        if (!currentIds.has(id)) this.marquee.baseline.delete(id);
+      }
+    }
     for (const id of this.ids) {
       if (!currentIds.has(id)) this.ids.delete(id);
     }

@@ -25,6 +25,7 @@ export interface ApplicationServices {
 
 export interface ApplicationCommands {
   readonly showFileContextMenu: (assetIds: string[]) => Promise<void>;
+  readonly startFileDrag: (assetIds: string[], isCurrent: () => boolean) => Promise<void>;
   readonly startCatalogSync: (root: string) => Promise<JobSnapshot | null>;
   readonly syncNewLibrary: (root: string) => Promise<void>;
   readonly startIndex: (root: string, retryFailed?: boolean) => Promise<void>;
@@ -83,6 +84,11 @@ class Application implements ApplicationContext {
 
     this.services = Object.freeze({ catalog, runtime, ocrSearch, jobs, orchestrator });
     this.commands = Object.freeze({
+      startFileDrag: async (assetIds: string[], isCurrent: () => boolean) => {
+        const token = await window.nicegal.native.prepareFileDrag({ assetIds });
+        // A release, cancellation, or newer press during resolution must not start a late drag.
+        if (isCurrent()) await window.nicegal.native.startFileDrag(token);
+      },
       showFileContextMenu: (assetIds: string[]) =>
         window.nicegal.native.showFileContextMenu({ assetIds }),
       startCatalogSync: (root: string) => this.startCatalogSync(root),

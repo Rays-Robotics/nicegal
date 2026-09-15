@@ -10,8 +10,8 @@ export interface ResolvedFileTarget {
   displayName: string;
 }
 
-/** Resolves renderer-owned IDs at the trusted Rust boundary. The same targets can later feed
- * Electron's `startDrag` without adding renderer-visible paths or another catalog read path. */
+/** Resolves renderer-owned IDs at the trusted Rust boundary for menus and native dragging,
+ * without exposing paths to the renderer or adding another catalog read path. */
 export async function resolveFileTargets(
   client: NicegalServerClient,
   assetIds: readonly string[],

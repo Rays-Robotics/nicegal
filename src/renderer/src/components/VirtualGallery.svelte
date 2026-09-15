@@ -104,6 +104,7 @@
     onopen = () => {},
     /** Requests file actions for the right-clicked tile. Selection ownership stays with the app. */
     onfilemenu = () => {},
+    onfiledrag = () => {},
     /** Fires when the user clicks empty gallery background (not a tile); the caller clears the
      * selection so a stray click does not leave stale targets behind. */
     onclear = () => {},
@@ -133,6 +134,7 @@
     onmarqueeend?: () => void;
     onopen?: (index: number) => void;
     onfilemenu?: (index: number) => void;
+    onfiledrag?: (index: number, isCurrent: () => boolean) => void;
     onclear?: () => void;
   } = $props();
 
@@ -140,6 +142,7 @@
     onopen: (index) => onopen(index),
     onselect: (index, modifiers) => onselect(index, modifiers),
     onfilemenu: (index) => onfilemenu(index),
+    onfiledrag: (index, isCurrent) => onfiledrag(index, isCurrent),
     onclear: () => onclear(),
     onmarqueestart: (modifiers) => onmarqueestart(modifiers),
     onmarqueechange: (ids) => onmarqueechange(ids),
@@ -658,6 +661,8 @@
           : tile.alt}
         style={tileStyle(tile)}
         role="button"
+        draggable="true"
+        ondragstart={(event) => input.startFileDrag(event, tile)}
         tabindex="0"
         onclick={(event) => input.activate(tile, event)}
         oncontextmenu={(event) => input.openFileMenu(event, tile)}
