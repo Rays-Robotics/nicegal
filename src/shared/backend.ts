@@ -242,7 +242,7 @@ export interface JobSnapshot {
   type:
     | "ocrModelLoad"
     | "modelPrepare"
-    | "ocrIndex"
+    | "libraryIndex"
     | "catalogSync"
     | "thumbnailGenerate"
     | "pruneMissing"
@@ -261,8 +261,8 @@ export interface IndexSelection {
   image: boolean;
 }
 
-export interface OcrIndexJobRequest {
-  type: "ocrIndex";
+export interface LibraryIndexJobRequest {
+  type: "libraryIndex";
   params: {
     root: string;
     /** Select text recognition and image search independently; both default to true. */
@@ -386,7 +386,7 @@ export interface LibraryPurgeJobRequest {
 export type JobRequest =
   | { type: "modelPrepare"; params: Record<string, never> }
   | OcrModelLoadJobRequest
-  | OcrIndexJobRequest
+  | LibraryIndexJobRequest
   | CatalogSyncJobRequest
   | ThumbnailJobRequest
   | PruneMissingJobRequest
@@ -395,7 +395,7 @@ export type JobRequest =
 /**
  * Synchronous on-demand thumbnail generation for a visible-tile batch — `POST /v1/thumbnails`,
  * distinct from the background `thumbnailGenerate` job. Generator version 1 no longer builds
- * thumbnails eagerly during `ocrIndex`; the gallery calls this for whatever is actually on screen.
+ * thumbnails eagerly during `libraryIndex`; the gallery calls this for whatever is actually on screen.
  */
 export interface EnsureThumbnailsRequest {
   assetIds: string[];
@@ -440,6 +440,8 @@ export interface BackendBridge {
 }
 
 export interface NativeBridge {
+  getAppInfo(): Promise<import("./diagnostics").AppInfo>;
+  collectDiagnostics(): Promise<string | null>;
   openExternalUrl(url: string): Promise<void>;
   openLicenseInformation(): Promise<void>;
   chooseDirectory(): Promise<string | null>;

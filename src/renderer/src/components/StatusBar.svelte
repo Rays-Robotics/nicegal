@@ -12,8 +12,11 @@
   crowding stable library and selection totals.
 -->
 <script lang="ts">
+  import type { JobSnapshot } from "../../../shared/backend";
   import type { LibraryRowStatus } from "../lib/catalog.svelte";
   import type { RuntimeController } from "../lib/runtime.svelte";
+
+  import { jobRateText } from "../lib/job-format";
 
   let {
     libraryName,
@@ -29,6 +32,7 @@
     backendReady,
     backendError,
     runtime,
+    job = null,
     onsettings,
   }: {
     libraryName: string;
@@ -46,6 +50,7 @@
     backendReady: boolean;
     backendError: string | null;
     runtime: RuntimeController;
+    job?: JobSnapshot | null;
     onsettings: () => void;
   } = $props();
 
@@ -106,6 +111,7 @@
       ? `${indexed} indexed`
       : `${indexed} / ${coverage.total.toLocaleString()} indexed`;
   });
+  const rateText = $derived(job ? jobRateText(job) : "");
 </script>
 
 <span class="status-segment library" title={libraryRoot || undefined}>{libraryName}</span>
@@ -138,6 +144,10 @@
   {#if indexText}
     <span class="status-segment count index-status">{indexText}</span>
   {/if}
+{/if}
+
+{#if rateText}
+  <span class="status-segment count job-rate" title="Current phase throughput">{rateText}</span>
 {/if}
 
 <style>

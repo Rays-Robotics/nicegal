@@ -139,6 +139,8 @@ const backend: NicegalBridge["backend"] = {
 };
 
 const native: NativeBridge = {
+  getAppInfo: () => ipcRenderer.invoke(IPC_CHANNELS.native.appInfo),
+  collectDiagnostics: () => ipcRenderer.invoke(IPC_CHANNELS.native.collectDiagnostics),
   prepareFileDrag: (request) => ipcRenderer.invoke(IPC_CHANNELS.native.prepareFileDrag, request),
   startFileDrag: (token) => ipcRenderer.invoke(IPC_CHANNELS.native.startFileDrag, token),
   openExternalUrl(url: string): Promise<void> {

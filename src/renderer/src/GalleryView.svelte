@@ -26,6 +26,7 @@
   import { originalUrlOf } from "./lib/gallery/types";
   import { createLibraryViewController } from "./lib/library-view.svelte";
   import { galleryLayoutState, settings, settingsLimits } from "./lib/settings.svelte";
+  import { visualFileBase64 } from "./lib/visual-file";
 
   const application = useApplication();
   const { catalog, runtime, ocrSearch, jobs, orchestrator } = application.services;
@@ -59,9 +60,9 @@
         ocrSearch.error = `${file.name} is larger than the 16 MB visual-search limit.`;
         continue;
       }
-      let bytes: Uint8Array;
+      let bytesBase64: string;
       try {
-        bytes = new Uint8Array(await file.arrayBuffer());
+        bytesBase64 = await visualFileBase64(file);
       } catch (error: unknown) {
         if (session === ocrSearch.visualSessionRevision) {
           ocrSearch.error = error instanceof Error ? error.message : String(error);
@@ -69,11 +70,7 @@
         return;
       }
       if (session !== ocrSearch.visualSessionRevision) return;
-      let binary = "";
-      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-      }
-      accepted.push({ displayName: file.name, bytesBase64: btoa(binary) });
+      accepted.push({ displayName: file.name, bytesBase64 });
     }
     if (accepted.length && session === ocrSearch.visualSessionRevision)
       ocrSearch.addExternalReferences(accepted);
@@ -388,6 +385,7 @@
         searching={ocrSearch.pending}
         selectedCount={view.gallerySelection.count}
         status={catalog.selectedStatus}
+        job={jobs.active}
         message={view.statusMessage}
         backendReady={catalog.backendStatus.ready}
         backendError={catalog.backendStatus.error}

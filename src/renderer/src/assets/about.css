@@ -36,6 +36,42 @@
   flex-wrap: wrap;
   gap: var(--space-8);
 }
+.about-build-info {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-3) var(--space-8);
+  margin: 0;
+}
+.about-build-info dt {
+  color: var(--text-secondary);
+}
+.about-build-info dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: var(--font-size-sm);
+}
+.about-diagnostics {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-4);
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--border-subtle);
+}
+.about-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--warning);
+  font-size: var(--font-size-sm);
+}
+.about-warning :global(svg) {
+  flex: none;
+}
+.about-status {
+  color: var(--text-secondary);
+}
 .about-error {
   color: var(--danger);
 }

@@ -49,23 +49,23 @@ export class NicegalServerClient {
     const url = new URL("/v1/catalog", this.endpoint);
     url.searchParams.set("root", root);
     url.searchParams.set("timeline", timeline);
-    return (await (await this.request(url, { method: "GET" })).json()) as GalleryAsset[];
+    return this.requestJson<GalleryAsset[]>(url, { method: "GET" });
   }
 
   async countAssets(root: string): Promise<number> {
     const url = new URL("/v1/catalog/count", this.endpoint);
     url.searchParams.set("root", root);
-    return (await (await this.request(url, { method: "GET" })).json()) as number;
+    return this.requestJson<number>(url, { method: "GET" });
   }
 
   async getRevision(): Promise<string> {
-    return (await (await this.request("/v1/catalog/revision", { method: "GET" })).json()) as string;
+    return this.requestJson<string>("/v1/catalog/revision", { method: "GET" });
   }
 
   async getAssetMetadata(assetId: string): Promise<AssetMetadata> {
     const url = new URL("/v1/catalog/metadata", this.endpoint);
     url.searchParams.set("assetId", assetId);
-    return (await (await this.request(url, { method: "GET" })).json()) as AssetMetadata;
+    return this.requestJson<AssetMetadata>(url, { method: "GET" });
   }
 
   async health(): Promise<void> {
@@ -73,37 +73,31 @@ export class NicegalServerClient {
   }
 
   async getOcrModels(): Promise<OcrModelsResponse> {
-    const response = await this.request("/v1/ocr/models", { method: "GET" });
-    return (await response.json()) as OcrModelsResponse;
+    return this.requestJson<OcrModelsResponse>("/v1/ocr/models", { method: "GET" });
   }
 
   async getSearchModels(): Promise<SearchModelsResponse> {
-    const response = await this.request("/v1/models", { method: "GET" });
-    return (await response.json()) as SearchModelsResponse;
+    return this.requestJson<SearchModelsResponse>("/v1/models", { method: "GET" });
   }
 
   async getRuntimeStatus(): Promise<RuntimeStatus> {
-    const response = await this.request("/v1/runtime", { method: "GET" });
-    return (await response.json()) as RuntimeStatus;
+    return this.requestJson<RuntimeStatus>("/v1/runtime", { method: "GET" });
   }
 
   async setImageModel(model: string): Promise<RuntimeStatus> {
-    return (await (
-      await this.request("/v1/runtime", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ imageModel: model }),
-      })
-    ).json()) as RuntimeStatus;
+    return this.requestJson<RuntimeStatus>("/v1/runtime", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ imageModel: model }),
+    });
   }
 
   async setExecutionProvider(executionProvider: ExecutionProviderId): Promise<RuntimeStatus> {
-    const response = await this.request("/v1/runtime", {
+    return this.requestJson<RuntimeStatus>("/v1/runtime", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ executionProvider }),
     });
-    return (await response.json()) as RuntimeStatus;
   }
 
   async getImageEmbeddingCoverage(root: string): Promise<ImageEmbeddingCoverage> {
@@ -313,7 +307,7 @@ export class NicegalServerClient {
       return snapshot;
     } catch (error) {
       if (!(error instanceof NicegalServerError)) throw error;
-      if (error.code === "ocr_models_not_loaded" && request.type === "ocrIndex") {
+      if (error.code === "ocr_models_not_loaded" && request.type === "libraryIndex") {
         return this.startJob(DEFAULT_OCR_MODEL_LOAD_REQUEST);
       }
       if (error.code !== "job_busy") throw error;
@@ -428,6 +422,11 @@ export class NicegalServerClient {
     } finally {
       reader.releaseLock();
     }
+  }
+
+  private async requestJson<T>(input: string | URL, init: RequestInit): Promise<T> {
+    const response = await this.request(input, init);
+    return (await response.json()) as T;
   }
 
   private async request(input: string | URL, init: RequestInit): Promise<Response> {

@@ -46,9 +46,13 @@
     </p>
     {#if error}<p class="update-error" role="alert">{error}</p>{/if}
     <footer>
-      <button onclick={openNotes} disabled={restarting}>Release notes</button>
-      <button onclick={onclose} disabled={restarting}>Later</button>
-      <button class="primary" onclick={restart} disabled={restarting}>
+      <button class="ui-button ui-button-compact" onclick={openNotes} disabled={restarting}
+        >Release notes</button
+      >
+      <button class="ui-button ui-button-compact" onclick={onclose} disabled={restarting}
+        >Later</button
+      >
+      <button class="ui-button ui-button-compact primary" onclick={restart} disabled={restarting}>
         {restarting ? "Restarting…" : "Restart and install"}
       </button>
     </footer>
@@ -89,33 +93,6 @@
     justify-content: flex-end;
     gap: var(--space-5);
     margin-top: var(--space-16);
-  }
-
-  button {
-    min-height: var(--control-height);
-    padding: 0 var(--space-9);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-sm);
-    background: var(--btn-face);
-    box-shadow: var(--bevel-raised);
-    color: var(--text-primary);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  button:hover:not(:disabled) {
-    border-color: var(--btn-border-hover);
-    background: var(--btn-face-hover);
-  }
-
-  button:focus-visible {
-    outline: var(--focus-ring);
-    outline-offset: var(--focus-ring-offset);
-  }
-
-  button:disabled {
-    opacity: 0.65;
-    cursor: default;
   }
 
   .primary {

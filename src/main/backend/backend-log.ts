@@ -37,6 +37,13 @@ export class BackendLog {
     );
   }
 
+  flush(): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      this.stream.write("", (error) => (error ? reject(error) : resolve()));
+    });
+  }
+
   close(): Promise<void> {
     if (this.closed) return Promise.resolve();
     this.write("desktop", "log-closed");

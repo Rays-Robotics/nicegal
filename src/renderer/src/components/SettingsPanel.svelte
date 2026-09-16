@@ -69,9 +69,17 @@
     { id: "cpu", label: "CPU" },
   ];
 
-  async function setExecutionProvider(id: ExecutionProviderId): Promise<void> {
-    await runtime.setExecutionProvider(id);
-  }
+  const availableExecutionProviders = $derived(
+    executionProviders.filter((provider) =>
+      (
+        runtime.status?.availableExecutionProviders ??
+        (isLinux ? ["webgpu", "cpu"] : ["directml", "openvino", "cpu"])
+      ).includes(provider.id),
+    ),
+  );
+  const executionProviderDisabled = $derived(
+    runtime.loading || runtime.saving || runtime.imageModelSaving || !catalog.backendStatus.ready,
+  );
 </script>
 
 <section class="settings-panel" aria-labelledby="settings-title">
@@ -79,7 +87,7 @@
     <div>
       <h1 id="settings-title">Settings</h1>
     </div>
-    <button class="close-button" onclick={onclose}>Close</button>
+    <button class="ui-button ui-button-compact" onclick={onclose}>Close</button>
   </header>
 
   <nav class="settings-pages" aria-label="Settings pages">
@@ -105,10 +113,10 @@
         <h2 id="appearance-title">Appearance</h2>
         <div class="row segmented-row">
           <span>Theme</span>
-          <div class="segmented" aria-label="Theme">
+          <div class="ui-choice-group" aria-label="Theme">
             {#each themes as theme (theme.id)}
               <button
-                class={{ active: $settings.theme === theme.id }}
+                class="ui-button"
                 aria-pressed={$settings.theme === theme.id}
                 onclick={() => ($settings.theme = theme.id)}>{theme.label}</button
               >
@@ -151,16 +159,13 @@
               >{runtime.saving ? "Switching…" : "Leave this unless indexing fails."}</small
             ></span
           >
-          <div class="segmented" aria-label="Execution provider">
-            {#each executionProviders.filter( (provider) => (runtime.status?.availableExecutionProviders ?? (isLinux ? ["webgpu", "cpu"] : ["directml", "openvino", "cpu"])).includes(provider.id) ) as provider (provider.id)}
+          <div class="ui-choice-group" aria-label="Execution provider">
+            {#each availableExecutionProviders as provider (provider.id)}
               <button
-                class={{ active: runtime.status?.configuredExecutionProvider === provider.id }}
+                class="ui-button"
                 aria-pressed={runtime.status?.configuredExecutionProvider === provider.id}
-                disabled={runtime.loading ||
-                  runtime.saving ||
-                  runtime.imageModelSaving ||
-                  !catalog.backendStatus.ready}
-                onclick={() => setExecutionProvider(provider.id)}>{provider.label}</button
+                disabled={executionProviderDisabled}
+                onclick={() => runtime.setExecutionProvider(provider.id)}>{provider.label}</button
               >
             {/each}
           </div>
@@ -223,11 +228,6 @@
     color: var(--text-secondary);
     font-size: var(--font-size-md);
   }
-  .settings-pages button[aria-pressed="true"] {
-    background: var(--btn-face-active);
-    border-color: var(--btn-border-active);
-    box-shadow: var(--bevel-sunken);
-  }
   header {
     flex: none;
     display: flex;
@@ -289,8 +289,6 @@
   .settings-error {
     margin: 0;
     padding: var(--space-5) var(--space-9);
-  }
-  .settings-error {
     border-top: 1px solid var(--border-subtle);
     color: var(--danger);
     font-size: var(--font-size-sm);
@@ -311,53 +309,7 @@
     font: inherit;
     font-size: var(--font-size-sm);
   }
-  .segmented {
-    display: flex;
-    gap: var(--space-3);
-  }
-  .segmented button {
-    padding: var(--space-2) var(--space-8);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-sm);
-    background: var(--btn-face);
-    box-shadow: var(--bevel-raised);
-    color: var(--text-secondary);
-    font-size: var(--font-size-sm);
-    cursor: pointer;
-  }
-  .segmented button:hover:not(:disabled) {
-    border-color: var(--btn-border-hover);
-    background: var(--btn-face-hover);
-  }
-  .segmented button.active {
-    border-color: var(--btn-border-active);
-    background: var(--btn-face-active);
-    box-shadow: var(--bevel-sunken);
-    color: var(--text-primary);
-  }
-  .segmented button:disabled {
-    cursor: default;
-    opacity: 0.5;
-  }
-  .close-button {
-    height: var(--control-height);
-    padding: 0 var(--space-9);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-sm);
-    background: var(--btn-face);
-    box-shadow: var(--bevel-raised);
-    color: var(--text-primary);
-    font: inherit;
-    white-space: nowrap;
-    cursor: pointer;
-  }
-  .close-button:hover {
-    border-color: var(--btn-border-hover);
-    background: var(--btn-face-hover);
-  }
-  input:focus-visible,
-  .segmented button:focus-visible,
-  .close-button:focus-visible {
+  input:focus-visible {
     outline: var(--focus-ring);
     outline-offset: var(--focus-ring-offset);
   }

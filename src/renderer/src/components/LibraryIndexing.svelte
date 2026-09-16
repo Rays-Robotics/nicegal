@@ -81,7 +81,7 @@
           disabled={busy}
         /> Include text recognition</label
       >
-      <p id={hintId}>10x slower than regular indexing, but good for precise text searches</p>
+      <p id={hintId}>10x slower than image search indexing, but good for precise text searches</p>
     </div>
   </div>
   <p>Choices are saved for this library.</p>

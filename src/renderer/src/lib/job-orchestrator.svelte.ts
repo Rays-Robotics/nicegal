@@ -13,26 +13,8 @@ import { clearPendingJob, loadPendingJob, savePendingJob } from "./job-resume";
 import { isTerminalJobStatus } from "./job-state";
 import { settings } from "./settings.svelte";
 
-/**
- * Owns the multi-job *intent* the user (or app startup) expressed, as opposed to `JobTracker`,
- * which only knows about the one job the backend is currently running. Three kinds of intent
- * live here, all funneled through `handleTerminalJob` — the single place a terminal
- * `JobSnapshot` is interpreted against whichever of these intents it belongs to (if any):
- *
- * - OCR continuations (`ocrContinuation`): an OCR model-load or index request can be temporarily
- *   represented by a different job than the one requested (the backend compiling models, or an
- *   already-running job), and this remembers what should happen once that stand-in job
- *   finishes — see `startOcrIndex` / `startOcrModelLoad` / `continueOcrRequest`. A `null` root
- *   marks the app-startup "just get models loaded, don't index anything" case (`prepareOcrModels`);
- *   a real root marks a user-initiated index request that may have been swapped for a model load.
- * - Resume bookkeeping (`resumeTrackedJobId` / `startupModelsReadyPromise` /
- *   `startupResumeAttempted`): which job (if any) is backed by a persisted resume record (see
- *   `lib/job-resume.ts`), and the one-shot startup replay of a job interrupted by the app exiting
- *   mid-run — deferred until the startup model load (if any) has settled, see `prepareOcrModels`
- *   / `resumeInterruptedJob`.
- * - Library purge tracking (`libraryPurge`): a library removal-with-purge only unregisters its
- *   root once its own `libraryPurge` job — and only that job — completes.
- */
+/** Coordinates model preparation, indexing continuations, persisted jobs, and library removal.
+ * JobTracker owns the current backend job; this class retains the user's intent across jobs. */
 export class JobOrchestrator {
   preparingSearchModels = $state(false);
   indexRoot = $state<string | null>(null);
@@ -62,13 +44,13 @@ export class JobOrchestrator {
     if (!this.restartingIndex || !this.indexIntent) return;
     const intent = this.indexIntent;
     this.restartingIndex = false;
-    await this.startOcrIndex(intent.root, intent.retryFailed, intent.selection);
+    await this.startLibraryIndex(intent.root, intent.retryFailed, intent.selection);
   }
   /**
    * An OCR request can be temporarily represented by another job when the backend is compiling
    * models or serving an already-running job. Keep the original library root until its own index
    * job can start; the returned snapshot alone does not carry that request's root. `root === null`
-   * means this chain exists only to get models loaded (app startup), not to index anything.
+   * means this chain exists only to get models loaded (explicit setup), not to index anything.
    */
   private ocrContinuation: {
     root: string | null;
@@ -83,15 +65,10 @@ export class JobOrchestrator {
   /** Job id currently backed by a persisted resume record, so only *its* terminal snapshot clears
    * that record — an unrelated job (e.g. a prune preview) reaching terminal must not. */
   private resumeTrackedJobId: string | null = null;
-  /** Whether the app-startup OCR model load (if any) finished with models actually loaded.
-   * Defaults to true: when `prepareOcrModels` finds models already loaded, no load runs and
-   * `resumeInterruptedJob` should proceed immediately. */
-  private startupModelsLoaded = true;
-  /** Resolves once the startup model-load chain (root `null`) has fully settled — success,
-   * failure, or cancellation. Defaults to an already-resolved promise for the "no load needed"
-   * case. */
-  private startupModelsReadyPromise: Promise<void> = Promise.resolve();
-  private startupModelsReadyResolve: (() => void) | null = null;
+  /** Explicit setup waits for OCR preparation before preparing the remaining search models. */
+  private preparationModelsLoaded = true;
+  private modelPreparationReady: Promise<void> = Promise.resolve();
+  private resolveModelPreparation: (() => void) | null = null;
   /** Guards `resumeInterruptedJob` to at most one attempt per app session. */
   private startupResumeAttempted = false;
 
@@ -128,22 +105,18 @@ export class JobOrchestrator {
     return this.restartingIndex;
   }
 
-  /** Clears `ocrContinuation` and, if the chain that just ended was the startup model-load chain
-   * (root `null`), resolves `startupModelsReadyPromise` and records whether it ended with models
-   * loaded. Safe to call unconditionally at every point the chain ends — a no-op for the
-   * startup-detection part when `ocrContinuation.root` isn't `null` or there's no pending
-   * resolver. */
+  /** Settles explicit model preparation when its rootless continuation ends. */
   private finishOcrContinuation(loaded: boolean): void {
-    const wasStartupLoad = this.ocrContinuation?.root === null;
+    const wasModelPreparation = this.ocrContinuation?.root === null;
     this.ocrContinuation = null;
-    if (wasStartupLoad && this.startupModelsReadyResolve) {
-      this.startupModelsLoaded = loaded;
-      this.startupModelsReadyResolve();
-      this.startupModelsReadyResolve = null;
+    if (wasModelPreparation && this.resolveModelPreparation) {
+      this.preparationModelsLoaded = loaded;
+      this.resolveModelPreparation();
+      this.resolveModelPreparation = null;
     }
   }
 
-  async startOcrIndex(
+  async startLibraryIndex(
     root: string,
     retryFailed = false,
     selection: IndexSelection = { ocr: true, image: true },
@@ -151,7 +124,7 @@ export class JobOrchestrator {
     if (!selection.ocr && !selection.image) return;
     const debugLimit = get(settings).debugIndexLimit;
     const request: JobRequest = {
-      type: "ocrIndex",
+      type: "libraryIndex",
       params: {
         root,
         ...selection,
@@ -182,7 +155,7 @@ export class JobOrchestrator {
       clearPendingJob();
       return;
     }
-    if (snapshot.type === "ocrIndex") {
+    if (snapshot.type === "libraryIndex") {
       this.finishOcrContinuation(true);
       if (!isTerminalJobStatus(snapshot.status)) {
         this.resumeTrackedJobId = snapshot.jobId;
@@ -199,13 +172,12 @@ export class JobOrchestrator {
     if (isTerminalJobStatus(snapshot.status)) this.handleTerminalJob(snapshot);
   }
 
-  /** `root` is only ever non-null for a user-initiated index request that got swapped for a model
-   * load (via `continueOcrRequest`'s "models" branch); app-startup model prep passes `null` so the
-   * continuation ends when models are ready, instead of implying an index of the whole library —
-   * see `prepareOcrModels`. */
+  /** A null root prepares models only; a library root continues into indexing. */
   async startOcrModelLoad(root: string | null, retryFailed = false): Promise<void> {
+    const generation = this.indexGeneration;
     this.ocrContinuation = { root, retryFailed, stage: "models", jobId: null };
     const snapshot = await this.jobs.start(DEFAULT_OCR_MODEL_LOAD_REQUEST);
+    if (generation !== this.indexGeneration) return;
     if (!snapshot) {
       this.finishOcrContinuation(false);
       return;
@@ -241,7 +213,7 @@ export class JobOrchestrator {
           this.restartingIndex = true;
           return;
         }
-        await this.startOcrIndex(
+        await this.startLibraryIndex(
           continuation.root,
           continuation.retryFailed,
           this.indexIntent.selection,
@@ -260,7 +232,10 @@ export class JobOrchestrator {
    * the next launch — see `lib/job-resume.ts`. */
   async startResumableJob(root: string, request: JobRequest): Promise<JobSnapshot | null> {
     const snapshot = await this.jobs.start(request);
-    if (snapshot) {
+    if (snapshot && isTerminalJobStatus(snapshot.status)) {
+      clearPendingJob();
+      this.resumeTrackedJobId = null;
+    } else if (snapshot) {
       this.resumeTrackedJobId = snapshot.jobId;
       savePendingJob(root, request);
     }
@@ -284,21 +259,19 @@ export class JobOrchestrator {
     }
   }
 
-  /** Loads OCR models if they aren't already, as an app-startup step. Passes `root: null` to
-   * `startOcrModelLoad` so this never implies indexing anything — only a user pressing "Index"
-   * that gets swapped to a model load (see `startOcrIndex`) should continue on to a real index.
-   * Settles `startupModelsReadyPromise` (via `finishOcrContinuation`) once this step's job chain
-   * ends, which gates `resumeInterruptedJob`. */
+  /** Starts explicit OCR preparation and exposes its completion to the setup sequence. */
   async prepareOcrModels(): Promise<void> {
+    const generation = this.indexGeneration;
     const models = await window.nicegal.backend.getOcrModels();
+    if (generation !== this.indexGeneration) return;
     if (models.loaded) {
-      this.startupModelsLoaded = true;
-      this.startupModelsReadyPromise = Promise.resolve();
+      this.preparationModelsLoaded = true;
+      this.modelPreparationReady = Promise.resolve();
       return;
     }
-    this.startupModelsLoaded = false;
-    this.startupModelsReadyPromise = new Promise((resolve) => {
-      this.startupModelsReadyResolve = resolve;
+    this.preparationModelsLoaded = false;
+    this.modelPreparationReady = new Promise((resolve) => {
+      this.resolveModelPreparation = resolve;
     });
     await this.startOcrModelLoad(null);
   }
@@ -307,34 +280,33 @@ export class JobOrchestrator {
   async prepareSearchModels(): Promise<void> {
     if (this.preparingSearchModels || this.jobs.running) return;
     this.preparingSearchModels = true;
+    const generation = this.indexGeneration;
     try {
       await this.prepareOcrModels();
-      await this.startupModelsReadyPromise;
-      if (this.startupModelsLoaded) await this.jobs.start({ type: "modelPrepare", params: {} });
+      if (generation !== this.indexGeneration) return;
+      await this.modelPreparationReady;
+      if (generation !== this.indexGeneration) return;
+      if (this.preparationModelsLoaded) await this.jobs.start({ type: "modelPrepare", params: {} });
     } catch (error) {
-      this.jobs.error = errorMessage(error);
+      if (generation === this.indexGeneration) this.jobs.error = errorMessage(error);
     } finally {
       this.preparingSearchModels = false;
     }
   }
 
-  /** Replays a job interrupted by the app exiting mid-run, scoped to the current library root.
-   * Runs at most once per app session: immediately if `prepareOcrModels` didn't need to start a
-   * model load, or once that load's job chain reaches a terminal state otherwise. If that load
-   * failed or was cancelled, nothing is resumed — the replay would hit the same missing-models
-   * condition and only add a second failed job. */
+  /** Replays an interrupted job once per session, after any active model preparation settles. */
   async resumeInterruptedJob(): Promise<void> {
-    await this.startupModelsReadyPromise;
+    await this.modelPreparationReady;
     if (this.startupResumeAttempted) return;
     this.startupResumeAttempted = true;
-    if (!this.startupModelsLoaded || this.jobs.running) return;
+    if (!this.preparationModelsLoaded || this.jobs.running) return;
     const root = this.getLibraryRoot();
     if (!root) return;
     const pending = loadPendingJob(root);
     if (!pending) return;
-    if (pending.type === "ocrIndex")
+    if (pending.type === "libraryIndex")
       // The UI's former force flag meant "retry failures"; do not replay it as a full rebuild.
-      await this.startOcrIndex(
+      await this.startLibraryIndex(
         pending.params.root,
         pending.params.scan?.retryFailed ?? pending.params.scan?.force,
         {
@@ -349,7 +321,7 @@ export class JobOrchestrator {
    * belongs to, if any. Must be wired as `JobTracker`'s `onTerminal` callback. */
   handleTerminalJob(snapshot: JobSnapshot): void {
     this.onLibraryStatusesChanged();
-    if (snapshot.type === "ocrIndex" && this.indexIntent) {
+    if (snapshot.type === "libraryIndex" && this.indexIntent) {
       this.indexIntent = null;
       clearPendingJob();
     }

@@ -11,7 +11,10 @@ import type {
 import { LIBRARIES_STORAGE_KEY, LIBRARY_ROOT_STORAGE_KEY } from "./constants";
 import { errorMessage } from "./errors";
 import { aspectRatioOf, type GalleryItem } from "./gallery/types";
+import { rootKey, rootsMatch } from "./library-root";
 import { settings, type GallerySettings } from "./settings.svelte";
+
+export { rootsMatch } from "./library-root";
 
 /** Persisted metadata and restorable view state for one library root. */
 export interface LibraryRecord {
@@ -88,18 +91,6 @@ function normalizeTextEmbeddingCoverage(
         ? coverage.lastIndexedAt
         : null,
   };
-}
-
-function isWindows(): boolean {
-  return typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
-}
-
-function rootKey(root: string): string {
-  return isWindows() ? root.toLowerCase() : root;
-}
-
-export function rootsMatch(left: string, right: string): boolean {
-  return rootKey(left) === rootKey(right);
 }
 
 function displayNameFor(root: string): string {
@@ -233,6 +224,10 @@ export class CatalogController {
       return;
     }
     try {
+      // A revision read after the rows could describe an insertion absent from those rows.
+      // Keep the earlier revision so polling detects any change during the load.
+      const revision = await window.nicegal.backend.getCatalogRevision();
+      if (generation !== this.generation) return;
       const assets = await window.nicegal.backend.listAssets({ root, timeline });
       if (generation !== this.generation) return;
       this.items = assets.map((asset) => this.mapGalleryAsset(asset, timeline));
@@ -244,8 +239,6 @@ export class CatalogController {
       // against `null` and fired a redundant second full reload right after a library switch.
       this.loadedTimeline = timeline;
       this.updateSelectedCatalogCount();
-      const revision = await window.nicegal.backend.getCatalogRevision();
-      if (generation !== this.generation) return;
       this.catalogRevision = revision;
     } catch (error) {
       if (generation === this.generation) {
@@ -271,7 +264,10 @@ export class CatalogController {
   /** Debounced refresh, used after a job reports catalog progress. */
   scheduleRefresh(delay: number): void {
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
-    this.refreshTimer = setTimeout(() => void this.refresh(), delay);
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined;
+      void this.refresh();
+    }, delay);
   }
 
   /** Cheap poll for a changed catalog revision (e.g. another window indexed); refreshes on change. */

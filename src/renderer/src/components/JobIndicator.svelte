@@ -161,8 +161,8 @@
         <strong>{issueLabel}</strong>
         <p>{issueMessage}</p>
         <div class="job-actions">
-          <button onclick={() => (reviewingErrors = true)}>Review errors…</button>
-          {#if !running}<button onclick={ondismiss}>Dismiss job</button>{/if}
+          <button class="ui-button" onclick={() => (reviewingErrors = true)}>Review errors…</button>
+          {#if !running}<button class="ui-button" onclick={ondismiss}>Dismiss job</button>{/if}
         </div>
       </section>
     {:else if job.status === "failed"}
@@ -363,11 +363,19 @@
 
   .job-actions button {
     padding: var(--space-4) var(--space-7);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-sm);
-    background: var(--btn-face);
-    color: var(--text-primary);
-    font: inherit;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .job-spinner.running :global(svg),
+    .mini-track.indeterminate .indeterminate-fill {
+      animation: none;
+    }
+    .mini-track.indeterminate .indeterminate-fill {
+      width: 100%;
+    }
+    .job-card {
+      transition: none;
+    }
   }
 
   @keyframes spin {

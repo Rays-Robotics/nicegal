@@ -32,6 +32,8 @@ export const IPC_CHANNELS = {
     ensureThumbnails: "backend:ensure-thumbnails",
   },
   native: {
+    appInfo: "native:app-info",
+    collectDiagnostics: "native:collect-diagnostics",
     openExternalUrl: "native:open-external-url",
     openLicenseInformation: "native:open-license-information",
     chooseDirectory: "native:choose-directory",

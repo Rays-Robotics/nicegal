@@ -45,6 +45,7 @@
 
   /* Status */
   --danger: #c42b1c;
+  --warning: #a65300;
 
   /* Search match caption: the "why this matched" strip pinned over a gallery tile (see
      VirtualGallery.svelte's .match-caption), and the highlighted terms within it. The surface is

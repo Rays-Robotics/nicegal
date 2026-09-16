@@ -78,7 +78,7 @@
         </div>
         <input
           id="min-match"
-          class="trackbar"
+          class="ui-trackbar trackbar"
           type="range"
           min="0"
           max="100"
@@ -216,61 +216,10 @@
   }
 
   .trackbar {
-    -webkit-appearance: none;
-    appearance: none;
-    display: block;
     width: 140px;
-    height: var(--thumb-height);
-    margin: 0;
-    background: transparent;
-    cursor: pointer;
-  }
-
-  .trackbar:disabled {
-    cursor: default;
   }
 
   .trackbar::-webkit-slider-runnable-track {
-    height: var(--track-height);
     margin-top: calc((var(--thumb-height) - var(--track-height)) / 2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--track-groove);
-    box-shadow: var(--bevel-sunken);
-  }
-
-  .trackbar::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: var(--thumb-width);
-    height: var(--thumb-height);
-    /* Centre the thumb on the track: half the height difference, minus the track's border. */
-    margin-top: calc((var(--track-height) - var(--thumb-height)) / 2 - 1px);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-sm);
-    background: var(--btn-face);
-    box-shadow: var(--bevel-raised);
-  }
-
-  .trackbar:hover:not(:disabled)::-webkit-slider-thumb {
-    border-color: var(--btn-border-hover);
-    background: var(--btn-face-hover);
-  }
-
-  .trackbar:active:not(:disabled)::-webkit-slider-thumb {
-    border-color: var(--btn-border-active);
-    background: var(--btn-face-active);
-    box-shadow: var(--bevel-sunken);
-  }
-
-  .trackbar:focus-visible::-webkit-slider-thumb {
-    border-color: var(--accent);
-    outline: var(--focus-ring);
-    outline-offset: var(--focus-ring-offset);
-  }
-
-  .trackbar:disabled::-webkit-slider-thumb {
-    border-color: var(--border);
-    background: var(--surface-2);
   }
 </style>

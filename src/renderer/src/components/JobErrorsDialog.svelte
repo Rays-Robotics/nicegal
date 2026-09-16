@@ -16,7 +16,7 @@
   <section class="error-dialog">
     <header>
       <h1 id="job-errors-title">Reported errors <span>({errors.length.toLocaleString()})</span></h1>
-      <button onclick={onclose}>Close</button>
+      <button class="ui-button ui-button-compact" onclick={onclose}>Close</button>
     </header>
     <p>Select a file to see the full error. Closing this window keeps the job summary.</p>
     <div class="error-browser">
@@ -79,14 +79,6 @@
     font: inherit;
     color: var(--text-primary);
     cursor: pointer;
-  }
-  header button {
-    height: var(--control-height);
-    padding: 0 var(--space-9);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-sm);
-    background: var(--btn-face);
-    box-shadow: var(--bevel-raised);
   }
   .error-browser {
     display: grid;

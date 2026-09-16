@@ -9,7 +9,7 @@ import type {
   JobRequest,
   JobSnapshot,
   LibraryPurgeJobRequest,
-  OcrIndexJobRequest,
+  LibraryIndexJobRequest,
   OcrModelLoadTarget,
   SearchRequest,
   ThumbnailJobRequest,
@@ -447,11 +447,11 @@ function validateJobRequest(value: unknown): JobRequest {
     requireJobParams(value, [], "Invalid model preparation job");
     return { type: "modelPrepare", params: {} };
   }
-  if (request.type === "ocrIndex") {
+  if (request.type === "libraryIndex") {
     const params = requireJobParams(
       value,
       ["root", "embed", "ocr", "image", "scan"],
-      "Invalid OCR index job",
+      "Invalid library index job",
     );
     for (const key of ["embed", "ocr", "image"] as const) {
       if (params[key] !== undefined && typeof params[key] !== "boolean") {
@@ -462,9 +462,9 @@ function validateJobRequest(value: unknown): JobRequest {
       throw new TypeError("Select text recognition or image search");
     }
     const root = validateAbsoluteRoot(params.root);
-    const scan = validateOcrIndexScan(params.scan);
-    const job: OcrIndexJobRequest = {
-      type: "ocrIndex",
+    const scan = validateLibraryIndexScan(params.scan);
+    const job: LibraryIndexJobRequest = {
+      type: "libraryIndex",
       params: {
         root,
         ...(params.embed === undefined ? {} : { embed: params.embed as boolean }),
@@ -565,7 +565,7 @@ function isCatalogSyncScan(
   );
 }
 
-function validateOcrIndexScan(value: unknown): OcrIndexJobRequest["params"]["scan"] {
+function validateLibraryIndexScan(value: unknown): LibraryIndexJobRequest["params"]["scan"] {
   if (value === undefined) return undefined;
   if (
     !isRecord(value) ||
@@ -593,7 +593,7 @@ function validateOcrIndexScan(value: unknown): OcrIndexJobRequest["params"]["sca
         !Number.isSafeInteger(value.debugLimit) ||
         value.debugLimit <= 0))
   ) {
-    throw new TypeError("Invalid OCR index job");
+    throw new TypeError("Invalid library index job");
   }
   return {
     ...(value.recursive === undefined ? {} : { recursive: value.recursive as boolean }),

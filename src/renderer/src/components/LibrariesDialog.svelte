@@ -121,11 +121,16 @@
     <div>
       <h1 id="libraries-title" tabindex="-1" bind:this={dialogHeading}>Libraries</h1>
     </div>
-    <button class="button" onclick={onclose}>Close</button>
+    <button class="ui-button ui-button-compact" onclick={onclose}>Close</button>
   </header>
 
   <div class="library-toolbar">
-    <button class="button" onclick={onadd} disabled={jobRunning} bind:this={addFolderButton}>
+    <button
+      class="ui-button ui-button-compact"
+      onclick={onadd}
+      disabled={jobRunning}
+      bind:this={addFolderButton}
+    >
       Add folder…
     </button>
     {#if selectedLibrary}
@@ -135,7 +140,7 @@
         aria-label={`Actions for ${selectedLibrary.displayName}`}
       >
         <button
-          class="button danger-button"
+          class="ui-button ui-button-compact danger-button"
           onclick={(event) => requestRemoval(selectedLibrary, event.currentTarget)}
           disabled={jobRunning}>Remove…</button
         >
@@ -180,7 +185,7 @@
         {/if}
         <div class="thumbnail-actions">
           <button
-            class="button"
+            class="ui-button ui-button-compact"
             onclick={() => startBackfill(selectedLibrary.root)}
             disabled={!backendReady || jobRunning || selectedBuckets.length === 0}
           >
@@ -274,7 +279,7 @@
       </p>
       <div class="confirmation-actions">
         <button
-          class="button"
+          class="ui-button ui-button-compact"
           onclick={() => removeLibrary(false)}
           disabled={jobRunning}
           bind:this={removeOnlyButton}
@@ -282,13 +287,15 @@
           Remove only
         </button>
         <button
-          class="button danger-button"
+          class="ui-button ui-button-compact danger-button"
           onclick={() => removeLibrary(true)}
           disabled={!backendReady || jobRunning}
         >
           Remove and delete indexed data
         </button>
-        <button class="button" onclick={() => void closeRemovalConfirmation()}>Cancel</button>
+        <button class="ui-button ui-button-compact" onclick={() => void closeRemovalConfirmation()}
+          >Cancel</button
+        >
       </div>
     </div>
   {/if}
@@ -541,41 +548,16 @@
     color: var(--text-secondary);
     font-size: var(--font-size-md);
   }
-  .button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: var(--control-height);
-    padding: 0 var(--space-9);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-sm);
-    background: var(--btn-face);
-    box-shadow: var(--bevel-raised);
-    color: var(--text-primary);
-    font: inherit;
-    white-space: nowrap;
-    cursor: pointer;
-  }
-  .button:hover:not(:disabled) {
-    border-color: var(--btn-border-hover);
-    background: var(--btn-face-hover);
-  }
   .danger-button {
     color: var(--danger);
   }
   .danger-button:hover:not(:disabled) {
     border-color: var(--danger);
   }
-  .button:focus-visible,
   .library-select:focus-visible,
   input:focus-visible {
     outline: var(--focus-ring);
     outline-offset: var(--focus-ring-offset);
-  }
-  .button:disabled {
-    color: var(--text-tertiary);
-    opacity: 0.65;
-    cursor: default;
   }
   @media (width < 40rem) {
     .list-heading {

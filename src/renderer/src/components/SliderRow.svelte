@@ -71,6 +71,7 @@
       {/each}
     </div>
     <input
+      class="ui-trackbar"
       type="range"
       aria-label={label}
       aria-valuetext={`${value}${unit ? ` ${unit}` : ""}`}
@@ -196,71 +197,5 @@
   .slider-row.disabled .tick,
   .slider-row.disabled .tick.major {
     background: var(--border);
-  }
-
-  input[type="range"] {
-    -webkit-appearance: none;
-    appearance: none;
-    display: block;
-    width: 100%;
-    height: var(--thumb-height);
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    outline: none;
-    accent-color: var(--accent);
-    margin: 0;
-    background: transparent;
-    cursor: pointer;
-  }
-
-  input[type="range"]:disabled {
-    cursor: default;
-  }
-
-  input[type="range"]::-webkit-slider-runnable-track {
-    box-sizing: border-box;
-    height: var(--track-height);
-    margin: 0;
-    background: var(--track-groove);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--bevel-sunken);
-  }
-
-  input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    box-sizing: border-box;
-    width: var(--thumb-width);
-    height: var(--thumb-height);
-    /* Centre the thumb on the track: half the height difference, minus the track's border. */
-    margin-top: calc((var(--track-height) - var(--thumb-height)) / 2 - 1px);
-    background: var(--btn-face);
-    border: 1px solid var(--btn-border);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--bevel-raised);
-  }
-
-  input[type="range"]:hover:not(:disabled)::-webkit-slider-thumb {
-    background: var(--btn-face-hover);
-    border-color: var(--btn-border-hover);
-  }
-
-  input[type="range"]:active:not(:disabled)::-webkit-slider-thumb {
-    background: var(--btn-face-active);
-    border-color: var(--btn-border-active);
-    box-shadow: var(--bevel-sunken);
-  }
-
-  input[type="range"]:focus-visible::-webkit-slider-thumb {
-    border-color: var(--accent);
-    outline: var(--focus-ring);
-    outline-offset: var(--focus-ring-offset);
-  }
-
-  input[type="range"]:disabled::-webkit-slider-thumb {
-    background: var(--surface-2);
-    border-color: var(--border);
   }
 </style>

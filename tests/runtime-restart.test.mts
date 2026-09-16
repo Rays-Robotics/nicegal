@@ -68,7 +68,7 @@ test("provider and model changes share restart and exclude overlapping job start
   await invoke(channels.setImageModel, "model");
   assert.equal(restarts, 2);
   const job = invoke(channels.startJob, {
-    type: "ocrIndex",
+    type: "libraryIndex",
     params: { root: process.cwd(), ocr: false, image: true },
   });
   await assert.rejects(invoke(channels.setExecutionProvider, "cpu"), /job is starting/);
@@ -102,4 +102,27 @@ test("provider change accepts status after the backend disconnect resets control
   assert.equal(controller.loading, false);
   assert.equal(controller.saving, false);
   assert.equal(controller.error, null);
+});
+
+test("image model write invalidates an older runtime read", async () => {
+  const read = Promise.withResolvers<object>();
+  const previous = { imageModel: { selectedModel: "old" } };
+  const selected = { imageModel: { selectedModel: "new" } };
+  globalThis.window = {
+    nicegal: {
+      backend: {
+        getRuntimeStatus: () => read.promise,
+        setImageModel: async () => selected,
+        getSearchModels: async () => ({}),
+        getOcrModels: async () => ({}),
+      },
+    },
+  } as unknown as Window & typeof globalThis;
+  const runtime = new RuntimeController();
+  const refresh = runtime.refresh();
+  await runtime.setImageModel("new");
+  read.resolve(previous);
+  await refresh;
+  assert.equal(runtime.status?.imageModel.selectedModel, "new");
+  assert.equal(runtime.loading, false);
 });

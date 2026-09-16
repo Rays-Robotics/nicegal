@@ -50,8 +50,12 @@ for (const restartForUpdate of [false, true])
       export const app = globalThis.__shutdownMocks.app;
       export class BrowserWindow extends EventEmitter {
         static getAllWindows() { return []; }
-        webContents = Object.assign(new EventEmitter(), { setWindowOpenHandler() {} });
+        webContents = Object.assign(new EventEmitter(), {
+          setWindowOpenHandler() {},
+          executeJavaScript() { return Promise.resolve({ 'nicegal.storageOriginMigration.v1': '1' }); }
+        });
         loadURL() { return Promise.resolve(); }
+        isDestroyed() { return false; }
         show() {}
       }
       export const Menu = { setApplicationMenu() {}, buildFromTemplate() {} };
@@ -61,8 +65,8 @@ for (const restartForUpdate of [false, true])
       "./backend/backend-log":
         "export class BackendLog { static async open() { return new BackendLog(); } write() {} async close() {} }",
       "./backend/ipc": "export function registerBackendIpc() {}",
-      "./backend/media-protocols":
-        "export function registerMediaSchemes() {} export function installMediaProtocolHandlers() {}",
+      "./protocols":
+        "export function registerCustomSchemes() {} export function installProtocolHandlers() {}",
       "./backend/nicegal-server-client": "export class NicegalServerClient { async health() {} }",
       "./backend/nicegal-server-process": `
       const s = globalThis.__shutdownMocks.state;

@@ -4,6 +4,7 @@ import { after, test } from "node:test";
 import { createServer } from "vite";
 
 import type { LibraryRowStatus } from "../src/renderer/src/lib/catalog.svelte.ts";
+import type { JobSnapshot } from "../src/shared/backend.ts";
 
 const vite = await createServer({
   configFile: false,
@@ -31,6 +32,7 @@ function statusMarkup(
   status: LibraryRowStatus | undefined,
   indexRate: number | null,
   indexingRunning = true,
+  phase: JobSnapshot["phase"] = "imageEmbedding",
 ): string {
   return render(StatusBar, {
     props: {
@@ -47,14 +49,17 @@ function statusMarkup(
       backendReady: true,
       backendError: null,
       runtime: {},
-      indexingRunning,
-      indexRate,
+      job: {
+        status: indexingRunning ? "running" : "completed",
+        phase,
+        progress: { itemsPerSecond: indexRate },
+      },
       onsettings: () => {},
     },
   }).body;
 }
 
-test("unknown image coverage does not show OCR counts or throughput", () => {
+test("throughput remains visible when image coverage is unknown", () => {
   for (const status of [
     empty,
     undefined,
@@ -63,9 +68,25 @@ test("unknown image coverage does not show OCR counts or throughput", () => {
   ]) {
     const html = statusMarkup(status, 12.5);
     assert.doesNotMatch(html, /index-status/);
-    assert.doesNotMatch(html, /images\/s/);
+    assert.match(html, /job-rate/);
+    assert.match(html, /items\/s/);
   }
   assert.doesNotMatch(statusMarkup({ ...empty, indexed: 100 }, 0), /index-status/);
+});
+
+test("cataloging and indexing rates occupy the final status segment only while active", () => {
+  for (const phase of ["cataloging", "ocr", "imageEmbedding", "textEmbedding"] as const) {
+    const html = statusMarkup(
+      { ...empty, imageCoverage: { indexed: 25, total: 80 } },
+      42,
+      true,
+      phase,
+    );
+    assert.match(html, /42 items\/s/);
+    assert.ok(html.indexOf("job-rate") > html.indexOf("index-status"));
+    assert.doesNotMatch(statusMarkup(empty, 42, false, phase), /job-rate/);
+    assert.doesNotMatch(statusMarkup(empty, null, true, phase), /job-rate/);
+  }
 });
 
 test("image coverage is independent of OCR and uses the image denominator", () => {

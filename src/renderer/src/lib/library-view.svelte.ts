@@ -83,6 +83,28 @@ export function createLibraryViewController(
   const searchIdentity = $derived(
     [catalog.libraryRoot, ocrSearch.query, ocrSearch.visualReferenceRevision].join("\u0000"),
   );
+  // Progress replaces the active snapshot frequently; searches only care whether a job runs.
+  const backendJobRunning = $derived(jobs.running);
+  // Retain only the search's catalog snapshot during jobs. Catalog loading, counts and revision
+  // polling continue normally. A new query/library/timeline gets a fresh snapshot immediately.
+  let previousSearchCatalog:
+    | { identity: string; timeline: string; items: GalleryItem[]; hasOcr: boolean }
+    | undefined;
+  const searchCatalog = $derived.by(() => {
+    const identity = searchIdentity;
+    const timeline = searchTimeline;
+    const hold =
+      catalog.backendStatus.ready &&
+      backendJobRunning &&
+      Boolean(ocrSearch.query.trim() || ocrSearch.visualReferences.length);
+    if (
+      hold &&
+      previousSearchCatalog?.identity === identity &&
+      previousSearchCatalog.timeline === timeline
+    )
+      return previousSearchCatalog;
+    return (previousSearchCatalog = { identity, timeline, items: catalog.items, hasOcr });
+  });
   const gallerySelection = $derived.by(() => {
     void searchIdentity;
     return new GallerySelection();
@@ -112,7 +134,7 @@ export function createLibraryViewController(
   /** The generation that currently owns `GalleryScrollState`'s restore suppression. */
   let preparedLibraryViewRestoreGeneration: number | null = null;
   let viewStateSaveTimer: ReturnType<typeof setTimeout> | undefined;
-  const fullSearchView = $derived(ocrSearch.apply(catalog.items));
+  const fullSearchView = $derived(ocrSearch.apply(searchCatalog.items));
   const searchView = $derived(collapseSearchSections(fullSearchView, collapsedSections));
   const filteredItems = $derived(searchView.items);
   /** Stable until the current search result changes; marquee moves must not rebuild this per event. */
@@ -135,7 +157,9 @@ export function createLibraryViewController(
           : undefined,
   );
   const jobRunning = $derived(jobs.running || application.services.orchestrator.indexing);
-  const indexingRunning = $derived(jobs.active?.type === "ocrIndex" && isActiveJob(jobs.active));
+  const indexingRunning = $derived(
+    jobs.active?.type === "libraryIndex" && isActiveJob(jobs.active),
+  );
   /** `undefined` (out-of-range index, e.g. the filter changed while open) closes the detail view. */
   const detailItem = $derived(detailIndex !== null ? filteredItems[detailIndex] : undefined);
   const libraryName = $derived(
@@ -155,7 +179,7 @@ export function createLibraryViewController(
   $effect(() => {
     void ocrSearch.query;
     const root = catalog.libraryRoot;
-    const items = catalog.items;
+    const { items, hasOcr: ocrAvailable } = searchCatalog;
     const timeline = searchTimeline;
     const visualReferenceRevision = ocrSearch.visualReferenceRevision;
     if (!catalog.backendStatus.ready) {
@@ -163,12 +187,11 @@ export function createLibraryViewController(
       return;
     }
     void visualReferenceRevision;
-    const ocrAvailable = hasOcr;
     const imageTextAvailable = supportsImageTextQueries;
     untrack(() => ocrSearch.schedule(root, items, timeline, imageTextAvailable, ocrAvailable));
   });
   $effect(() => {
-    const catalogItems = catalog.items;
+    const catalogItems = searchCatalog.items;
     untrack(() => gallerySelection.retainCatalogAssets(catalogItems));
   });
   $effect(() => {

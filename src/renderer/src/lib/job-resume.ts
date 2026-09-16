@@ -1,15 +1,19 @@
-import type { JobRequest, OcrIndexJobRequest, ThumbnailJobRequest } from "../../../shared/backend";
+import type {
+  JobRequest,
+  LibraryIndexJobRequest,
+  ThumbnailJobRequest,
+} from "../../../shared/backend";
 
 import { JOB_RESUME_STORAGE_KEY } from "./constants";
 
 /**
- * Job types worth auto-resuming after an interrupted app exit. `ocrIndex` and
+ * Job types worth auto-resuming after an interrupted app exit. `libraryIndex` and
  * `thumbnailGenerate` are explicitly documented as safe to retry — their writes are fingerprinted/upserted, so
  * replaying the same request just skips whatever already finished (see "Jobs" in
  * `nicegal-server/INTERNAL_API.md`). `pruneMissing` is deliberately excluded: it is a destructive,
  * user-confirmed action and must never restart on its own, especially a non-dry-run deletion.
  */
-export type ResumableJobRequest = OcrIndexJobRequest | ThumbnailJobRequest;
+export type ResumableJobRequest = LibraryIndexJobRequest | ThumbnailJobRequest;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -28,7 +32,7 @@ function isResumable(request: unknown): request is ResumableJobRequest {
     return false;
   const candidate = request as { type?: unknown; params: { root?: unknown } };
   return (
-    (candidate.type === "ocrIndex" || candidate.type === "thumbnailGenerate") &&
+    (candidate.type === "libraryIndex" || candidate.type === "thumbnailGenerate") &&
     isRoot(candidate.params.root)
   );
 }
@@ -62,13 +66,13 @@ export function clearPendingJob(): void {
 
 /**
  * Converts the one historical thumbnail resume representation into the current
- * request contract. OCR records have always carried their root in params and
+ * request contract. Library-index records have always carried their root in params and
  * therefore remain strict.
  */
 function normalizePendingRequest(root: string, request: unknown): ResumableJobRequest | null {
   if (!isRecord(request) || !isRecord(request.params)) return null;
 
-  if (request.type === "ocrIndex") {
+  if (request.type === "libraryIndex") {
     if (
       !hasOwn(request.params, "root") ||
       !isRoot(request.params.root) ||
@@ -78,9 +82,9 @@ function normalizePendingRequest(root: string, request: unknown): ResumableJobRe
     }
     return {
       ...request,
-      type: "ocrIndex",
+      type: "libraryIndex",
       params: { ...request.params, root },
-    } as OcrIndexJobRequest;
+    } as LibraryIndexJobRequest;
   }
 
   if (request.type !== "thumbnailGenerate") return null;

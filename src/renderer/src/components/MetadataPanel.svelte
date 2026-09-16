@@ -18,7 +18,7 @@
   } = $props();
 
   let retry = $state(0);
-  let copied = $state(false);
+  let copiedText = $state<string | null>(null);
   // An await block discards an older result when selection, catalog snapshot or retry changes.
   const request = $derived.by((): Promise<AssetMetadata> | null => {
     void retry; // Explicit refresh also reloads an unchanged selection.
@@ -32,9 +32,9 @@
   async function copy(value: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(value);
-      copied = true;
+      copiedText = value;
     } catch {
-      copied = false;
+      copiedText = null;
     }
   }
 </script>
@@ -45,7 +45,7 @@
     <button
       class="ui-button"
       onclick={() => {
-        copied = false;
+        copiedText = null;
         retry += 1;
       }}
       disabled={!ready || !asset}>Refresh</button
@@ -138,8 +138,7 @@
             aria-label="Recognized text"
             readonly
             spellcheck={false}
-            value={info.ocrText}
-          ></textarea>
+            value={info.ocrText}></textarea>
         {:else if info.ocrState === "indexed"}
           <p>No text found in this image.</p>
         {:else}
@@ -168,7 +167,7 @@
             <button
               class="ui-button"
               onclick={() => void copy(cleanDiagnostic(info.file.error ?? ""))}
-              >{copied ? "Copied" : "Copy details"}</button
+              >{copiedText === cleanDiagnostic(info.file.error) ? "Copied" : "Copy details"}</button
             >
           </details>
         {/if}
@@ -178,7 +177,7 @@
           <summary>Technical details</summary>
           <pre>{errorMessage(error)}</pre>
           <button class="ui-button" onclick={() => void copy(errorMessage(error))}
-            >{copied ? "Copied" : "Copy details"}</button
+            >{copiedText === errorMessage(error) ? "Copied" : "Copy details"}</button
           >
         </details>
       {/await}

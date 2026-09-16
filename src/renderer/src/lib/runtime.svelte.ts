@@ -110,6 +110,7 @@ export class RuntimeController {
 
   async setImageModel(model: string): Promise<void> {
     if (this.imageModelSaving || this.saving) return;
+    this.statusGeneration += 1;
     this.imageModelSaving = true;
     this.imageModelError = null;
     try {

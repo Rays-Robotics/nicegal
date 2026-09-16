@@ -59,18 +59,15 @@ class Application implements ApplicationContext {
   private backendInitialized = false;
 
   constructor() {
+    const ocrSearch = new OcrSearchController();
     const catalog = new CatalogController();
     const runtime = new RuntimeController();
-    const ocrSearch = new OcrSearchController();
-    const jobs = new JobTracker(
+    const jobs: JobTracker = new JobTracker(
       (delay) => catalog.scheduleRefresh(delay),
       () => catalog.bumpThumbnailRevision(),
       (snapshot) => {
         orchestrator.handleTerminalJob(snapshot);
         void runtime.refreshModels();
-        if (snapshot.type === "ocrModelLoad" && snapshot.status === "completed") {
-          void runtime.refreshActualProvider();
-        }
       },
     );
     const orchestrator = new JobOrchestrator(
@@ -136,9 +133,10 @@ class Application implements ApplicationContext {
         this.services.jobs.backendDisconnected(resuming);
       }
       if (recovered) {
-        void runtime.refresh();
-        void runtime.refreshActualProvider();
-        void runtime.refreshModels();
+        if (this.backendInitialized) {
+          void runtime.refresh();
+          void runtime.refreshModels();
+        }
         void catalog.refresh();
         void this.initializeReadyBackend();
         void this.services.orchestrator.backendReady();
@@ -211,7 +209,7 @@ class Application implements ApplicationContext {
     if (jobs.running || orchestrator.indexing || !root) return;
     const { ocr, image } = libraryIndexing(get(settings), root);
     if (!ocr && !image) return;
-    await orchestrator.startOcrIndex(root, retryFailed, { ocr, image });
+    await orchestrator.startLibraryIndex(root, retryFailed, { ocr, image });
   }
 
   private async startThumbnailBackfill(

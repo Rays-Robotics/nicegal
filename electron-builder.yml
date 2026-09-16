@@ -1,7 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/electron-userland/electron-builder/refs/heads/release/v27/packages/app-builder-lib/scheme.json
 appId: io.github.nicegal.nicegal
 productName: nicegal
 directories:
   buildResources: build
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  grantFileProtocolExtraPrivileges: false
+  onlyLoadAppFromAsar: true
+electronLanguages:
+  - en-US
+  - en-GB
 files:
   - out/**/*
   - resources/**/*

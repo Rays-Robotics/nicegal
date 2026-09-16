@@ -10,6 +10,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 
+import type { AppInfo } from "../../shared/diagnostics";
 import type { NicegalServerClient } from "../backend/nicegal-server-client";
 import type { IpcSenderValidator } from "../ipc";
 
@@ -29,10 +30,24 @@ import {
 export interface NativeIpcContext {
   isTrustedSender: IpcSenderValidator;
   readonly client: NicegalServerClient | null;
+  getAppInfo: () => AppInfo;
+  collectDiagnostics: (owner: BrowserWindow) => Promise<string | null>;
 }
 
 /** Main-process capabilities backed by Electron/OS APIs rather than the search backend. */
 export function registerNativeIpc(context: NativeIpcContext): void {
+  handleTrustedIpc(IPC_CHANNELS.native.appInfo, context.isTrustedSender, () =>
+    context.getAppInfo(),
+  );
+  handleTrustedIpc(
+    IPC_CHANNELS.native.collectDiagnostics,
+    context.isTrustedSender,
+    async (event) => {
+      const owner = BrowserWindow.fromWebContents(event.sender);
+      if (!owner) throw new Error("Diagnostics require an owning application window");
+      return context.collectDiagnostics(owner);
+    },
+  );
   // One preparation per renderer. Tokens keep resolved paths on the trusted side and prevent
   // an older lookup from replacing a newer gesture while the backend is responding.
   const drags = new WeakMap<

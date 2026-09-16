@@ -46,8 +46,11 @@
     if (job.type === "libraryPurge" && job.progress.deleted > 0) {
       metrics.push({ label: "Deleted", value: job.progress.deleted.toLocaleString() });
     }
-    if ((job.type === "ocrIndex" || job.type === "catalogSync") && job.progress.deleted > 0) {
-      metrics.push({ label: "Removed", value: job.progress.deleted.toLocaleString() });
+    if (
+      (job.type === "libraryIndex" || job.type === "catalogSync") &&
+      (job.progress.pruneCandidates > 0 || job.progress.deleted > 0)
+    ) {
+      metrics.push({ label: "Deleted", value: job.progress.deleted.toLocaleString() });
     }
 
     return metrics.slice(0, 3);
@@ -137,7 +140,7 @@
   }
 
   .active-assets ul {
-    max-height: 96px;
+    height: 96px;
     overflow: auto;
     margin: var(--space-3) 0 0;
     padding: 0;
@@ -266,6 +269,13 @@
     }
     to {
       transform: translateX(250%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .indeterminate-fill {
+      animation: none;
+      width: 100%;
     }
   }
 </style>

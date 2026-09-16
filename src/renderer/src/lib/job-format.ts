@@ -8,6 +8,30 @@
  */
 import type { JobPhase, JobProgress, JobSnapshot } from "../../../shared/backend";
 
+/** Use the backend's phase rate; missing measurements must not look like zero throughput. */
+export function jobRateText(job: JobSnapshot): string {
+  const rate = job.progress.itemsPerSecond;
+  if (
+    (job.status !== "running" && job.status !== "cancelling") ||
+    job.progress.download ||
+    ![
+      "scanning",
+      "cataloging",
+      "thumbnails",
+      "ocr",
+      "imageEmbedding",
+      "textEmbedding",
+      "cleanup",
+      "pruning",
+    ].includes(job.phase) ||
+    typeof rate !== "number" ||
+    !Number.isFinite(rate) ||
+    rate < 0
+  )
+    return "";
+  return `${rate.toLocaleString(undefined, { maximumFractionDigits: 1 })} items/s`;
+}
+
 const PHASE_LABELS: Record<JobPhase, string> = {
   queued: "Queued",
   downloadingModels: "Downloading models",
@@ -26,7 +50,7 @@ const PHASE_LABELS: Record<JobPhase, string> = {
 const CANCELLED_COMPLETION_LABELS: Record<JobSnapshot["type"], string> = {
   modelPrepare: "Search model preparation",
   ocrModelLoad: "OCR model loading",
-  ocrIndex: "Indexing",
+  libraryIndex: "Indexing",
   catalogSync: "Sync",
   thumbnailGenerate: "Thumbnail generation",
   pruneMissing: "Pruning",
@@ -132,7 +156,7 @@ export function jobPhaseProgress(snapshot: JobSnapshot): PhaseProgress {
   }
 }
 
-export function summarizeCompletion(snapshot: JobSnapshot, ocrIndexEmbeds: boolean): string {
+export function summarizeCompletion(snapshot: JobSnapshot, libraryIndexEmbeds: boolean): string {
   if (snapshot.status === "cancelled") {
     return `${CANCELLED_COMPLETION_LABELS[snapshot.type]} cancelled`;
   }
@@ -141,10 +165,10 @@ export function summarizeCompletion(snapshot: JobSnapshot, ocrIndexEmbeds: boole
       return "Search models ready";
     case "ocrModelLoad":
       return "OCR models ready";
-    case "ocrIndex": {
+    case "libraryIndex": {
       const n = snapshot.progress.cataloged;
       const embedded = snapshot.progress.embedded;
-      const indexed = ocrIndexEmbeds
+      const indexed = libraryIndexEmbeds
         ? `Indexed ${n.toLocaleString()} item${n === 1 ? "" : "s"}, embedded ${embedded.toLocaleString()}`
         : `Indexed ${n.toLocaleString()} item${n === 1 ? "" : "s"}`;
       return `${indexed}${removedEntrySummary(snapshot.progress.deleted)}`;
@@ -188,7 +212,7 @@ export const PHASES_BY_TYPE: Record<JobSnapshot["type"], readonly VisiblePhase[]
     { label: "Load", backendPhases: ["loadingModels"] },
     { label: "Done", backendPhases: ["finished"] },
   ],
-  ocrIndex: [
+  libraryIndex: [
     { label: "Sync", backendPhases: ["scanning", "cataloging"] },
     { label: "Images", backendPhases: ["imageEmbedding"] },
     { label: "OCR", backendPhases: ["ocr", "cleanup", "pruning"] },
@@ -216,8 +240,8 @@ export const PHASES_BY_TYPE: Record<JobSnapshot["type"], readonly VisiblePhase[]
 /** Older snapshots without a selection show every indexing stage. */
 export function jobPhases(job: JobSnapshot): readonly VisiblePhase[] {
   const stages = job.indexStages;
-  if (job.type !== "ocrIndex" || !stages) return PHASES_BY_TYPE[job.type];
-  return PHASES_BY_TYPE.ocrIndex
+  if (job.type !== "libraryIndex" || !stages) return PHASES_BY_TYPE[job.type];
+  return PHASES_BY_TYPE.libraryIndex
     .filter(
       (phase) =>
         (!phase.backendPhases.includes("ocr") || stages.ocr) &&

@@ -2,7 +2,7 @@ import type { JobRequest, JobSnapshot } from "../../../shared/backend";
 
 import { cleanDiagnostic, errorMessage } from "./errors";
 import { summarizeCompletion } from "./job-format";
-import { isActiveJob, isTerminalJobStatus } from "./job-state";
+import { isTerminalJobStatus } from "./job-state";
 
 const COMPLETION_MESSAGE_MS = 6_000;
 
@@ -19,7 +19,7 @@ export class JobTracker {
   private previousCataloged = 0;
   private previousPhase: JobSnapshot["phase"] | null = null;
   private refreshedThumbnailJobId: string | null = null;
-  private ocrIndexEmbeds = false;
+  private libraryIndexEmbeds = false;
   private unsubscribe: (() => void) | null = null;
   private completionTimer: ReturnType<typeof setTimeout> | null = null;
   /** A job subscription can send its terminal snapshot more than once while it winds down. */
@@ -51,7 +51,7 @@ export class JobTracker {
     this.error = "";
     this.connectionError = null;
     this.completionMessage = "";
-    this.ocrIndexEmbeds = request.type === "ocrIndex" && request.params.embed !== false;
+    this.libraryIndexEmbeds = request.type === "libraryIndex" && request.params.embed !== false;
     if (this.completionTimer) {
       clearTimeout(this.completionTimer);
       this.completionTimer = null;
@@ -84,9 +84,12 @@ export class JobTracker {
     if (!isTerminalJobStatus(snapshot.status)) {
       this.unsubscribe = window.nicegal.backend.subscribeJob(
         snapshot.jobId,
-        (next) => this.handleSnapshot(next),
+        (next) => {
+          if (generation === this.generation) this.handleSnapshot(next);
+        },
         (error) => {
-          this.connectionError = error ? errorMessage(error) : null;
+          if (generation === this.generation)
+            this.connectionError = error ? errorMessage(error) : null;
         },
       );
     }
@@ -100,10 +103,12 @@ export class JobTracker {
       return;
     }
     if (!this.active || isTerminalJobStatus(this.active.status)) return;
+    const generation = this.generation;
     try {
-      this.handleSnapshot(await window.nicegal.backend.cancelJob(this.active.jobId));
+      const snapshot = await window.nicegal.backend.cancelJob(this.active.jobId);
+      if (generation === this.generation) this.handleSnapshot(snapshot);
     } catch (error) {
-      this.error = errorMessage(error);
+      if (generation === this.generation) this.error = errorMessage(error);
     }
   }
 
@@ -123,6 +128,7 @@ export class JobTracker {
   }
 
   dispose(): void {
+    this.generation += 1;
     this.unsubscribe?.();
     if (this.completionTimer) clearTimeout(this.completionTimer);
   }
@@ -184,7 +190,7 @@ export class JobTracker {
       const needsAttention =
         snapshot.status === "failed" || Boolean(snapshot.error) || snapshot.errors.length > 0;
       if (!needsAttention) {
-        this.completionMessage = summarizeCompletion(snapshot, this.ocrIndexEmbeds);
+        this.completionMessage = summarizeCompletion(snapshot, this.libraryIndexEmbeds);
         // Keep successful work in the toolbar until the user opens then closes its progress card.
         // Fast jobs otherwise mount and unmount between paints, making completion invisible.
         if (snapshot.status !== "completed") this.active = null;
@@ -194,12 +200,5 @@ export class JobTracker {
         }, COMPLETION_MESSAGE_MS);
       }
     }
-  }
-
-  /** Rates are measured by the backend, independent of reconnects and renderer lifetime. */
-  get indexRate(): number | null {
-    if (this.active?.type !== "ocrIndex" || !isActiveJob(this.active)) return null;
-    const rate = this.active.progress.itemsPerSecond;
-    return typeof rate === "number" && Number.isFinite(rate) && rate >= 0 ? rate : null;
   }
 }

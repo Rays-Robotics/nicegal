@@ -4,10 +4,6 @@
   import { timelineTickLabel, bucketLabel } from "../lib/gallery/dates";
   import { firstVisibleIndex } from "../lib/gallery/visible-range";
 
-  // All five are always supplied by App.svelte, the sole caller, and none of them degrade
-  // gracefully: an empty layout/onSeek no-op wouldn't be a usable reduced state, just a scrollbar
-  // that silently does nothing. Required, not optional — the old `?`/defaults papered over what
-  // is really a hard dependency on the gallery it's paired with.
   let {
     items,
     layout,
@@ -20,11 +16,7 @@
     layout: GalleryLayout;
     scrollTop: number;
     viewportHeight: number;
-    /**
-     * Date ticks describe a date-ordered gallery. Relevance-sorted search results are not one —
-     * their dates run in no order at all — so ranked mode turns the ruler off and keeps only the
-     * scrollbar.
-     */
+    /** Hide date ticks when results are ordered by relevance. */
     showTicks?: boolean;
     onSeek: (y: number) => void;
   } = $props();
@@ -153,18 +145,48 @@
   function onpointerup(): void {
     dragging = false;
   }
+
+  function onkeydown(event: KeyboardEvent): void {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    let next: number;
+    switch (event.key) {
+      case "ArrowUp":
+        next = scrollTop - 40;
+        break;
+      case "ArrowDown":
+        next = scrollTop + 40;
+        break;
+      case "PageUp":
+        next = scrollTop - viewportHeight;
+        break;
+      case "PageDown":
+        next = scrollTop + viewportHeight;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = scrollRange;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    onSeek(Math.max(0, Math.min(scrollRange, next)));
+  }
 </script>
 
 <div
   class="timeline-scrollbar"
   bind:this={trackEl}
   role="slider"
-  aria-label="Scroll to date"
+  aria-label={showTicks ? "Scroll to date" : "Scroll results"}
   aria-orientation="vertical"
   aria-valuemin={0}
   aria-valuemax={100}
   aria-valuenow={scrollPercent}
   tabindex="0"
+  {onkeydown}
   {onpointerdown}
   {onpointermove}
   {onpointerup}
@@ -198,10 +220,6 @@
     height: 100%;
     background: var(--surface-1);
     border-left: 1px solid var(--border-subtle);
-    /* Right edge sits flush against the window/content edge with nothing beyond it to frame it —
-       per the user's review, an unbordered flush edge reads as cropped even once the thumb's
-       corner-cut illusion (border-radius) is fixed. A matching 1px border gives the whole track a
-       defined right edge, like the left one already has. */
     border-right: 1px solid var(--border-subtle);
     touch-action: none;
     cursor: pointer;

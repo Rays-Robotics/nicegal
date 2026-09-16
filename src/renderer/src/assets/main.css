@@ -28,7 +28,7 @@ body {
   font: inherit;
   cursor: pointer;
 }
-.ui-button:hover:not(:disabled) {
+.ui-button:hover:not(:disabled):not([aria-pressed="true"]) {
   border-color: var(--btn-border-hover);
   background: var(--btn-face-hover);
 }
@@ -103,4 +103,106 @@ body {
 }
 .themed-scrollbar::-webkit-scrollbar-thumb:active {
   background-color: var(--text-primary);
+}
+
+/* Native range appearance shared by gallery size and match quality controls. */
+.ui-trackbar {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: var(--thumb-height);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  accent-color: var(--accent);
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ui-trackbar:disabled {
+  cursor: default;
+}
+
+.ui-trackbar::-webkit-slider-runnable-track {
+  box-sizing: border-box;
+  height: var(--track-height);
+  margin: 0;
+  background: var(--track-groove);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--bevel-sunken);
+}
+
+.ui-trackbar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: var(--thumb-width);
+  height: var(--thumb-height);
+  /* Centre the thumb on the track: half the height difference, minus the track's border. */
+  margin-top: calc((var(--track-height) - var(--thumb-height)) / 2 - 1px);
+  background: var(--btn-face);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--bevel-raised);
+}
+
+.ui-trackbar:hover:not(:disabled)::-webkit-slider-thumb {
+  background: var(--btn-face-hover);
+  border-color: var(--btn-border-hover);
+}
+
+.ui-trackbar:active:not(:disabled)::-webkit-slider-thumb {
+  background: var(--btn-face-active);
+  border-color: var(--btn-border-active);
+  box-shadow: var(--bevel-sunken);
+}
+
+.ui-trackbar:focus-visible::-webkit-slider-thumb {
+  border-color: var(--accent);
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.ui-trackbar:disabled::-webkit-slider-thumb {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+/* Compact actions and spaced choice groups use the same desktop button states. */
+.ui-button-compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  padding: 0 var(--space-9);
+  white-space: nowrap;
+}
+.ui-button[aria-pressed="true"] {
+  border-color: var(--btn-border-active);
+  background: var(--btn-face-active);
+  box-shadow: var(--bevel-sunken);
+  color: var(--text-primary);
+}
+.ui-choice-group {
+  display: flex;
+  gap: var(--space-3);
+}
+.ui-choice-group > .ui-button {
+  min-height: 0;
+  padding: var(--space-2) var(--space-8);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+.ui-choice-group > .ui-button[aria-pressed="true"] {
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+  }
 }

@@ -8,7 +8,6 @@ import {
 } from "electron";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 
 import type { BackendStatus } from "../shared/backend";
@@ -17,22 +16,23 @@ import icon from "../../resources/icon.png?asset";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { BackendLog } from "./backend/backend-log";
 import { registerBackendIpc } from "./backend/ipc";
-import { installMediaProtocolHandlers, registerMediaSchemes } from "./backend/media-protocols";
 import { NicegalServerClient } from "./backend/nicegal-server-client";
 import { NicegalServerProcess, RESTART_EXIT_CODE } from "./backend/nicegal-server-process";
 import { ThumbnailReader } from "./backend/thumbnail-reader";
+import { collectDiagnostics, getAppInfo } from "./diagnostics";
 import { registerNativeIpc } from "./native/ipc";
+import { installProtocolHandlers, registerCustomSchemes } from "./protocols";
+import { APP_ENTRY_URL } from "./renderer-location";
+import { migrateLegacyRendererStorage } from "./renderer-storage-migration";
 import { startUpdates } from "./updates";
 
-registerMediaSchemes();
+registerCustomSchemes();
 
 // Match electron-builder.yml so installed shortcuts and the running app share an identity.
 if (process.platform === "win32") app.setAppUserModelId("io.github.nicegal.nicegal");
 
 const isDev = Boolean(process.env["ELECTRON_RENDERER_URL"]);
-const rendererEntryUrl =
-  process.env["ELECTRON_RENDERER_URL"] ??
-  pathToFileURL(join(__dirname, "../renderer/index.html")).toString();
+const rendererEntryUrl = process.env["ELECTRON_RENDERER_URL"] ?? APP_ENTRY_URL;
 const trustedRendererOrigin = isDev ? new URL(rendererEntryUrl).origin : null;
 
 const backendStatus: BackendStatus = { ready: false, error: null };
@@ -77,37 +77,49 @@ registerNativeIpc({
   get client(): NicegalServerClient | null {
     return backendClient;
   },
+  getAppInfo,
+  collectDiagnostics: (owner) =>
+    collectDiagnostics(owner, {
+      backendStatus,
+      flushBackendLog: () => backendLog?.flush() ?? Promise.resolve(),
+    }),
 });
 
 /**
  * Restrictive CSP for the app's own document, delivered as a response header (not a `<meta>`
  * tag) so it can differ between dev and production without the two policies stacking. Local
  * media never uses `file:`/`data:` — it is served entirely through the `thumb:`/`original:`
- * app protocols registered in `media-protocols.ts` — so `img-src`/`media-src` only need to
- * name those schemes plus `'self'`. Dev additionally loads its document and scripts from the
+ * protocols — so `img-src`/`media-src` only need to name those schemes plus `'self'`. Dev
+ * additionally loads its document and scripts from the
  * Vite dev server and needs `'unsafe-eval'` and a websocket allowance for HMR.
  */
 function installContentSecurityPolicy(): void {
-  const scriptSrc = isDev ? "'self' 'unsafe-eval'" : "'self'";
   const connectSrc = isDev ? "'self' ws://localhost:*" : "'self'";
-  const policy = [
-    "default-src 'self'",
-    `script-src ${scriptSrc}`,
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' thumb: original:",
-    "media-src 'self' thumb: original:",
-    `connect-src ${connectSrc}`,
-    "object-src 'none'",
-    "base-uri 'none'",
-    "form-action 'none'",
-    "frame-ancestors 'none'",
-  ].join("; ");
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (details.resourceType !== "mainFrame") {
       callback({ responseHeaders: details.responseHeaders });
       return;
     }
+    // The legacy file page is loaded once only to read its origin-scoped localStorage. Prevent its
+    // obsolete renderer bundle from starting and making rejected IPC calls during that migration.
+    const scriptSrc = details.url.startsWith("file:")
+      ? "'none'"
+      : isDev
+        ? "'self' 'unsafe-eval'"
+        : "'self'";
+    const policy = [
+      "default-src 'self'",
+      `script-src ${scriptSrc}`,
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' thumb: original:",
+      "media-src 'self' thumb: original:",
+      `connect-src ${connectSrc}`,
+      "object-src 'none'",
+      "base-uri 'none'",
+      "form-action 'none'",
+      "frame-ancestors 'none'",
+    ].join("; ");
     callback({
       responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": [policy] },
     });
@@ -132,11 +144,28 @@ function createWindow(): void {
     if (!isTrustedRendererUrl(url)) event.preventDefault();
   });
 
-  mainWindow.on("ready-to-show", () => {
-    mainWindow.show();
+  void loadRenderer(mainWindow).catch((error: unknown) => {
+    console.error("Failed to load the renderer", error);
   });
+}
 
-  void mainWindow.loadURL(rendererEntryUrl);
+async function loadRenderer(mainWindow: BrowserWindow): Promise<void> {
+  if (!isDev) {
+    try {
+      const migrated = await migrateLegacyRendererStorage(
+        mainWindow,
+        join(__dirname, "../renderer"),
+      );
+      if (migrated) console.info("Migrated renderer settings from the legacy file origin");
+    } catch (error) {
+      // Migration is compatibility work, not a reason to prevent the app from opening. It remains
+      // unmarked so a transient profile/storage error can retry on the next launch.
+      console.warn("Could not migrate renderer settings from the legacy file origin", error);
+    }
+  }
+
+  await mainWindow.loadURL(rendererEntryUrl);
+  if (!mainWindow.isDestroyed()) mainWindow.show();
 }
 
 /** Keeps the user-facing chrome compact while preserving the diagnostics Electron supplies. */
@@ -304,10 +333,11 @@ if (app.requestSingleInstanceLock()) {
     installApplicationMenu();
     // Chromium needs the handlers before the first renderer navigation. Readers become available
     // after startup and can be replaced on backend restart without re-registering the protocols.
-    installMediaProtocolHandlers(
-      () => backendClient,
-      () => thumbnailReader,
-    );
+    installProtocolHandlers({
+      rendererDirectory: join(__dirname, "../renderer"),
+      getCatalog: () => backendClient,
+      getThumbnails: () => thumbnailReader,
+    });
     createWindow();
     updates = startUpdates(isTrustedRenderer, () => {
       restartForUpdate = true;
@@ -351,5 +381,6 @@ if (app.requestSingleInstanceLock()) {
     if (process.platform !== "darwin") app.quit();
   });
 } else {
+  console.info("Nicegal is already running; exiting this instance.");
   app.quit();
 }

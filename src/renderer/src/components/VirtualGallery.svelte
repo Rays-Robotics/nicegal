@@ -170,7 +170,7 @@
   );
   let previousViewKey: string | undefined;
   const viewOffsets = new SvelteMap<string, { top: number; anchor: typeof anchor }>();
-  let tiles = $state<PoolTile[]>([]);
+  let tiles = $state.raw<PoolTile[]>([]);
 
   // Animated GIF/video promotion (see lib/gallery/media-policy.ts): which pooled tiles currently
   // show their real original source instead of a static thumbnail poster.
@@ -190,11 +190,7 @@
   /** Snapshot of the last-logged promoted set, purely for the debug-log diff below. */
   let loggedPromotedIds = new Set<string>();
 
-  // On-demand thumbnail generation (generator version 1 no longer builds thumbnails eagerly
-  // during indexing — see nicegal-server/INTERNAL_API.md). A poster's normal thumb:// request is tried
-  // first, unchanged, so an already-generated library never pays a round trip; only a genuine miss
-  // (the asset was never thumbnailed) queues a batched `POST /v1/thumbnails` call, flushed once
-  // scrolling settles so a fling-scroll doesn't request thumbnails for tiles already scrolled past.
+  // Try cached posters first; generate missing thumbnails in batches once scrolling settles.
   /** Per-asset cache-bust counter: bumped once an ensure call succeeds, so that asset's poster
    * `<img>` re-requests thumb:// and picks up the now-generated row. */
   const localRefresh = new SvelteMap<string, number>();
@@ -289,17 +285,20 @@
       height: tile.height,
     });
     if (!queued) return;
-    console.debug("[nicegal:thumbnails] poster miss, queued", {
-      assetId: tile.itemId,
-      width: tile.width,
-      height: tile.height,
-    });
+    if (import.meta.env.DEV) {
+      console.debug("[nicegal:thumbnails] poster miss, queued", {
+        assetId: tile.itemId,
+        width: tile.width,
+        height: tile.height,
+      });
+    }
     if (media.scrollIdle) thumbnailScheduler.resume();
   }
 
   /** Logs promotion changes (not every recompute — only when the promoted set actually differs)
    * so the console stays readable while scrolling. */
   $effect(() => {
+    if (!import.meta.env.DEV) return;
     const current = promotedIds;
     const previous = untrack(() => loggedPromotedIds);
     const added = Array.from(current).filter((id) => !previous.has(id));
@@ -324,24 +323,14 @@
     ),
   );
 
-  // Remaining effects synchronize the recycled DOM pool, scroll position, and external schedulers.
+  // Effects synchronize DOM state and schedulers; untracked reads prevent feedback loops.
 
-  /**
-   * Recomputes the pool whenever anything that changes what should be visible changes. This has
-   * to be an effect rather than `$derived`: `recyclePool` needs to read the *previous* `tiles` to
-   * decide which slots to keep (that's the whole point of pooling — see the file header), and a
-   * derived value can't read its own prior output. `updatePool` reads that previous value via
-   * `untrack` so re-running doesn't itself count as a dependency.
-   */
+  // Read the previous pool untracked to retain DOM slots without a feedback loop.
   $effect(() => {
     updatePool(layout, viewportHeight, scrollTop, overscan, imagePoolSize);
   });
 
-  /**
-   * An anchor is useful for presentation-only relayouts, but a changed search means the user is
-   * reading a new result set. Clearing it before the layout-restoration effect runs prevents a
-   * match from the old viewport from pulling the new results into the middle.
-   */
+  // Reset the anchor and DOM scroll position when the query changes.
   $effect(() => {
     if (previousSearchQuery === undefined) {
       previousSearchQuery = searchQuery;
@@ -384,24 +373,13 @@
     if (media.scrollIdle) untrack(() => thumbnailScheduler.resume());
   });
 
-  /**
-   * Restores the scroll anchor whenever the layout is rebuilt (mode switch, a size knob, a
-   * resize, or filtering). This is a real side effect — it awaits a `tick()` and then writes
-   * `viewport.scrollTop` imperatively — not a value `$derived` could produce.
-   */
+  // Restore the anchor after the DOM reflects the rebuilt layout.
   $effect(() => {
     const currentLayout = layout;
     void restoreAnchor(currentLayout);
   });
 
-  /**
-   * Notifies the parent (via the `onScroll` prop) of the current scroll position and layout.
-   * Kept separate from the pool-update effect above even though its dependencies are a subset of
-   * that effect's: the two serve different consumers (internal DOM pool vs. an external prop
-   * callback that mainly feeds `TimelineScrollbar`), and this one also needs to fire on a
-   * layout-only change (e.g. a filter shrinks `items`) with no single imperative call site to
-   * hook into otherwise, since `layout` recomputes on its own via `$derived`.
-   */
+  // Keep the parent's timeline current on both scrolling and layout-only changes.
   $effect(() => {
     const state = { scrollTop, layout };
     untrack(() => onScroll(state));
@@ -409,12 +387,7 @@
 
   let overscanController: ReturnType<typeof createOverscanController> | undefined;
 
-  /**
-   * Owns the overscan controller's lifecycle: a fresh controller (with its own
-   * `requestAnimationFrame` chain) is needed whenever the overscan props change, and the old one
-   * must be disposed so it doesn't keep scheduling frames. The `return` cleanup is why this can't
-   * be a derived value — only effects get teardown.
-   */
+  // Replacing overscan settings also replaces and disposes the controller's animation loop.
   $effect(() => {
     overscan = { before: immediateOverscan, after: immediateOverscan };
     const controller = createOverscanController(
@@ -623,8 +596,9 @@
   onblur={() => oninteractionchange(false)}
 />
 
-<!-- svelte-ignore a11y_no_static_element_interactions -- background-click deselection is a
-     mouse-only convenience; the keyboard equivalent is Escape (handled by the caller). -->
+<!-- Background-click deselection has a keyboard equivalent: Escape, handled by the caller. -->
+<!-- Scroll methods need the element reference; attachViewport owns setup and teardown. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class={{ "gallery-viewport": true, "hide-native-scrollbar": hideNativeScrollbar }}
   bind:this={viewport}
@@ -671,7 +645,6 @@
         onmouseleave={() => onTileLeave(tile)}
       >
         {#if tile.mediaKind === "video" && promoted}
-          <!-- svelte-ignore a11y_media_has_caption -->
           <video
             class="gallery-tile"
             src={tile.originalSrc}

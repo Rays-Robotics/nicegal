@@ -5,6 +5,7 @@ import type { LayoutOptions } from "./gallery/options";
 import type { DividerGranularity, LayoutMode } from "./gallery/types";
 
 import { SETTINGS_STORAGE_KEY } from "./constants";
+import { rootKey } from "./library-root";
 
 export type GalleryTheme = "seven-a" | "seven-b";
 
@@ -183,20 +184,11 @@ function createSettingsStore(): Writable<GallerySettings> {
 
 export const settings = createSettingsStore();
 
-/** Registered library roots are canonical; Windows paths compare without case. */
-function indexingKey(root: string): string {
-  return typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
-    ? root.toLowerCase()
-    : root;
-}
-
 export function libraryIndexing(
   value: GallerySettings,
   root: string,
 ): { ocr: boolean; image: boolean } {
-  return (
-    value.libraryIndexing[indexingKey(root)] ?? { ocr: value.indexOcr, image: value.indexImage }
-  );
+  return value.libraryIndexing[rootKey(root)] ?? { ocr: value.indexOcr, image: value.indexImage };
 }
 
 export function setLibraryIndexing(
@@ -205,7 +197,7 @@ export function setLibraryIndexing(
 ): void {
   settings.update((value) => ({
     ...value,
-    libraryIndexing: { ...value.libraryIndexing, [indexingKey(root)]: selection },
+    libraryIndexing: { ...value.libraryIndexing, [rootKey(root)]: selection },
   }));
 }
 
@@ -223,7 +215,19 @@ export function toLayoutOptions(value: GallerySettings): LayoutOptions {
   };
 }
 
-export const layoutOptions: Readable<LayoutOptions> = derived(settings, toLayoutOptions);
+let previousLayoutOptions: LayoutOptions | undefined;
+export const layoutOptions: Readable<LayoutOptions> = derived(settings, (value, set) => {
+  const next = toLayoutOptions(value);
+  if (
+    previousLayoutOptions &&
+    Object.entries(next).every(
+      ([key, value]) => previousLayoutOptions![key as keyof LayoutOptions] === value,
+    )
+  )
+    return;
+  previousLayoutOptions = next;
+  set(next);
+});
 
 /**
  * Transient gallery-layout parameters: derived from the runtime environment rather than chosen

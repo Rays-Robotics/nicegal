@@ -10,7 +10,7 @@ import { emptyLayout, type GalleryLayout } from "./types";
  */
 export class GalleryScrollState {
   scrollTop = $state(0);
-  layout = $state<GalleryLayout>(emptyLayout());
+  layout = $state.raw<GalleryLayout>(emptyLayout());
   /** Rendered height of the row `VirtualGallery` shares with `TimelineScrollbar`. */
   height = $state(0);
   /** A gallery mounts at zero before `App` can restore its saved offset. Do not persist callbacks
