@@ -19,6 +19,8 @@ interface ThumbnailRow {
   data: Uint8Array;
 }
 
+const THUMBNAIL_SCHEMA_VERSION = 4n;
+
 export class ThumbnailReader {
   private readonly database: DatabaseSync;
   private readonly lookup: StatementSync;
@@ -29,9 +31,11 @@ export class ThumbnailReader {
     const versionQuery = this.database.prepare("PRAGMA user_version");
     versionQuery.setReadBigInts(true);
     const version = versionQuery.get() as { user_version: bigint };
-    if (version.user_version !== 3n) {
+    if (version.user_version !== THUMBNAIL_SCHEMA_VERSION) {
       this.database.close();
-      throw new Error(`Unsupported thumbnail schema version ${version.user_version}; expected 3`);
+      throw new Error(
+        `Unsupported thumbnail schema version ${version.user_version}; expected ${THUMBNAIL_SCHEMA_VERSION}`,
+      );
     }
 
     this.lookup = this.database.prepare(`
