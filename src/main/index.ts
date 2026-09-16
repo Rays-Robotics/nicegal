@@ -140,9 +140,6 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (!isTrustedRendererUrl(url)) event.preventDefault();
-  });
 
   void loadRenderer(mainWindow).catch((error: unknown) => {
     console.error("Failed to load the renderer", error);
@@ -163,6 +160,13 @@ async function loadRenderer(mainWindow: BrowserWindow): Promise<void> {
       console.warn("Could not migrate renderer settings from the legacy file origin", error);
     }
   }
+
+  // Install the persistent navigation guard after the hidden, main-process-controlled migration
+  // navigations. The migration must briefly visit the former file: URL to access that origin's
+  // localStorage; guarding the window earlier cancels that load before the values can be read.
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (!isTrustedRendererUrl(url)) event.preventDefault();
+  });
 
   await mainWindow.loadURL(rendererEntryUrl);
   if (!mainWindow.isDestroyed()) mainWindow.show();
