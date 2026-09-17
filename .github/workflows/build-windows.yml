@@ -9,6 +9,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RELEASE_SERIES: '0.0'
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -36,18 +37,13 @@ jobs:
           # Release numbering reads existing tags, which a shallow clone would not have.
           fetch-depth: 0
 
-      # package.json carries 0.0.0 as a placeholder; the shipped version comes from the tags, so a
-      # release needs no version-bump commit. One release per push, however many commits it holds.
       - name: Choose the release version
         id: version
         shell: bash
         run: |
-          latest=$(git tag -l 'v0.0.*' --sort=-v:refname | head -n1)
-          if [ -z "$latest" ]; then
-            version=0.0.1
-          else
-            version="0.0.$(( ${latest#v0.0.} + 1 ))"
-          fi
+          latest=$(git tag -l "v${RELEASE_SERIES}.*" --sort=-v:refname | sed -n '1p')
+          patch=${latest##*.}
+          version="${RELEASE_SERIES}.$(( ${patch:-0} + 1 ))"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Building $version (previous tag: ${latest:-none})"
 
@@ -66,15 +62,14 @@ jobs:
             platform: macos-intel
             target: mac
             arch: x64
-          # Windows and Linux runner entries:
-          # - os: windows-latest
-          #   platform: windows
-          #   target: win
-          #   arch: x64
-          # - os: ubuntu-24.04
-          #   platform: linux
-          #   target: linux
-          #   arch: x64
+          - os: windows-latest
+            platform: windows
+            target: win
+            arch: x64
+          - os: ubuntu-26.04
+            platform: linux
+            target: linux
+            arch: x64
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -285,8 +280,9 @@ jobs:
 
   publish:
     needs: [version, build]
-    if: github.repository == 'centuryofimage/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    if: github.repository == 'centuryofimage/nicegal' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-slim
+    environment: release
     steps:
       - name: Checkout release notes
         uses: actions/checkout@v7
@@ -301,7 +297,6 @@ jobs:
           path: dist
 
       - name: Tag and publish the release
-        if: github.repository == 'centuryofimage/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
