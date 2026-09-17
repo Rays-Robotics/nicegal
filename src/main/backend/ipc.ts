@@ -310,7 +310,13 @@ function validateAbsoluteRoot(value: unknown): string {
 }
 
 function validateExecutionProvider(value: unknown): ExecutionProviderId {
-  if (value !== "cpu" && value !== "directml" && value !== "openvino" && value !== "webgpu") {
+  if (
+    value !== "cpu" &&
+    value !== "directml" &&
+    value !== "openvino" &&
+    value !== "webgpu" &&
+    value !== "coreml"
+  ) {
     throw new TypeError("Invalid execution provider");
   }
   return value;

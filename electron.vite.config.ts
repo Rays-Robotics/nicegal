@@ -20,12 +20,14 @@ const frontendCommit = process.env["NICEGAL_FRONTEND_COMMIT"] ?? readCommit(repo
 const backendCommit =
   process.env["NICEGAL_BACKEND_COMMIT"] ??
   readCommit(fileURLToPath(new URL("./nicegal-server", import.meta.url)));
+const releaseUpdatesEnabled = process.env["NICEGAL_RELEASE_UPDATES"] === "1";
 
 export default defineConfig({
   main: {
     define: {
       __NICEGAL_FRONTEND_COMMIT__: JSON.stringify(frontendCommit),
       __NICEGAL_BACKEND_COMMIT__: JSON.stringify(backendCommit),
+      __NICEGAL_RELEASE_UPDATES__: JSON.stringify(releaseUpdatesEnabled),
     },
     build: {
       sourcemap: true,

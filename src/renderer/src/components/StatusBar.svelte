@@ -59,6 +59,7 @@
     directml: "DirectML",
     openvino: "OpenVINO",
     webgpu: "WebGPU",
+    coreml: "CoreML",
   };
 
   const providerText = $derived(

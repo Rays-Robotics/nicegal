@@ -8,7 +8,7 @@ export interface BackendStatus {
 }
 
 /** See `nicegal_core::runtime::ExecutionProvider`. */
-export type ExecutionProviderId = "cpu" | "directml" | "openvino" | "webgpu";
+export type ExecutionProviderId = "cpu" | "directml" | "openvino" | "webgpu" | "coreml";
 
 export interface ImageModelStatus {
   activeModel: string;

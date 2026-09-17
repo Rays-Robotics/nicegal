@@ -3,11 +3,13 @@
 
   let {
     version,
+    installReady,
     onclose,
     onnotes,
     onrestart,
   }: {
     version: string | null;
+    installReady: boolean;
     onclose: () => void;
     onnotes: () => Promise<void>;
     onrestart: () => Promise<void>;
@@ -41,20 +43,27 @@
   <section class="update-dialog">
     <h1 id="update-dialog-title">Update available</h1>
     <p id="update-dialog-description">
-      Nicegal{version ? ` ${version}` : ""} is ready to install. Restart now, or keep working and install
-      it when you quit.
+      {#if installReady}
+        Nicegal{version ? ` ${version}` : ""} is ready to install. Restart now, or keep working and install
+        it when you quit.
+      {:else}
+        Nicegal{version ? ` ${version}` : ""} is available. Open its release page to download and install
+        it manually.
+      {/if}
     </p>
     {#if error}<p class="update-error" role="alert">{error}</p>{/if}
     <footer>
       <button class="ui-button ui-button-compact" onclick={openNotes} disabled={restarting}
-        >Release notes</button
+        >{installReady ? "Release notes" : "Open release page"}</button
       >
       <button class="ui-button ui-button-compact" onclick={onclose} disabled={restarting}
         >Later</button
       >
-      <button class="ui-button ui-button-compact primary" onclick={restart} disabled={restarting}>
-        {restarting ? "Restarting…" : "Restart and install"}
-      </button>
+      {#if installReady}
+        <button class="ui-button ui-button-compact primary" onclick={restart} disabled={restarting}>
+          {restarting ? "Restarting…" : "Restart and install"}
+        </button>
+      {/if}
     </footer>
   </section>
 </Modal>

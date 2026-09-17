@@ -62,10 +62,12 @@
   }
 
   const isLinux = navigator.userAgent.includes("Linux");
+  const isMac = navigator.userAgent.includes("Macintosh");
   const executionProviders: { id: ExecutionProviderId; label: string }[] = [
     { id: "directml", label: "DirectML" },
     { id: "openvino", label: "OpenVINO (CPU)" },
     { id: "webgpu", label: "WebGPU" },
+    { id: "coreml", label: "CoreML" },
     { id: "cpu", label: "CPU" },
   ];
 
@@ -73,7 +75,7 @@
     executionProviders.filter((provider) =>
       (
         runtime.status?.availableExecutionProviders ??
-        (isLinux ? ["webgpu", "cpu"] : ["directml", "openvino", "cpu"])
+        (isMac ? ["coreml", "cpu"] : isLinux ? ["webgpu", "cpu"] : ["directml", "openvino", "cpu"])
       ).includes(provider.id),
     ),
   );
@@ -134,16 +136,22 @@
       <section class="settings-group" aria-labelledby="updates-title">
         <h2 id="updates-title">Updates</h2>
         <label class="row">
-          <span class="setting-label">Automatic updates</span>
+          <span class="setting-label"
+            >{isMac ? "Notify me about updates" : "Automatic updates"}</span
+          >
           <input
             type="checkbox"
             checked={updatePreferences?.enabled ?? false}
-            disabled={!updatePreferences || updateSaving}
+            disabled={!updatePreferences || updateSaving || updatePreferences.mode === "none"}
             onchange={setAutomaticUpdates}
           />
         </label>
-        {#if updatePreferences && !updatePreferences.supported}
-          <p class="update-build-note">This build uses manual updates.</p>
+        {#if updatePreferences?.mode === "notify"}
+          <p class="update-build-note">
+            Check once when Nicegal opens. Download updates from the release page.
+          </p>
+        {:else if updatePreferences?.mode === "none"}
+          <p class="update-build-note">This build does not check for updates.</p>
         {/if}
         {#if updateError}<p class="settings-error" role="alert">{updateError}</p>{/if}
       </section>

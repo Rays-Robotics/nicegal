@@ -23,7 +23,7 @@ import {
   copyFiles,
   openFiles,
   resolveFileTargets,
-  revealFiles,
+  revealFile,
   type ResolvedFileTarget,
 } from "./file-actions";
 
@@ -222,16 +222,18 @@ function fileMenuTemplate(
     },
     { type: "separator" },
     {
-      label: revealLabel(),
-      click: () => runFileAction(owner, "Reveal failed", () => revealFiles(files)),
+      label: revealLabel(multiple),
+      click: () => runFileAction(owner, "Reveal failed", () => revealFile(files[0])),
     },
   ];
 }
 
-function revealLabel(): string {
-  if (process.platform === "darwin") return "Reveal in Finder";
-  if (process.platform === "win32") return "Reveal in Explorer";
-  return "Open Containing Folder";
+function revealLabel(multiple: boolean): string {
+  if (process.platform === "darwin")
+    return multiple ? "Reveal clicked item in Finder" : "Reveal in Finder";
+  if (process.platform === "win32")
+    return multiple ? "Reveal clicked item in Explorer" : "Reveal in Explorer";
+  return multiple ? "Open clicked item's folder" : "Open Containing Folder";
 }
 
 function runFileAction(owner: BrowserWindow, title: string, action: () => Promise<void>): void {

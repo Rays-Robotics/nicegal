@@ -16,11 +16,13 @@ import type { UpdateStatus } from "../shared/updates";
 import { IPC_CHANNELS } from "../shared/ipc-channels";
 import { loadAutomaticUpdates, saveAutomaticUpdates } from "./update-preferences";
 
+declare const __NICEGAL_RELEASE_UPDATES__: boolean;
+
 const RELEASES = "https://github.com/centuryofimage/nicegal/releases";
 const LATEST_RELEASE_API = "https://api.github.com/repos/centuryofimage/nicegal/releases/latest";
 
 /** GitHub's web /releases/latest redirects; updater feed requests expect JSON from it. */
-export async function latestStableReleaseFeed(): Promise<string> {
+export async function latestStableRelease(): Promise<{ version: string; feedUrl: string }> {
   const response = await net.fetch(LATEST_RELEASE_API, {
     headers: {
       Accept: "application/vnd.github+json",
@@ -44,7 +46,24 @@ export async function latestStableReleaseFeed(): Promise<string> {
   ) {
     throw new Error("Latest release response is not a stable numeric release");
   }
-  return `${RELEASES}/download/${release.tag_name}`;
+  return {
+    version: release.tag_name.slice(1),
+    feedUrl: `${RELEASES}/download/${release.tag_name}`,
+  };
+}
+
+export async function latestStableReleaseFeed(): Promise<string> {
+  return (await latestStableRelease()).feedUrl;
+}
+
+export function isNewerRelease(latest: string, current: string): boolean {
+  if (!/^\d+\.\d+\.\d+$/.test(latest) || !/^\d+\.\d+\.\d+$/.test(current)) return false;
+  const latestParts = latest.split(".").map(BigInt);
+  const currentParts = current.split(".").map(BigInt);
+  for (let index = 0; index < 3; index++) {
+    if (latestParts[index] !== currentParts[index]) return latestParts[index] > currentParts[index];
+  }
+  return false;
 }
 
 /** Only the NSIS installer creates this marker; ZIP/portable share the same app payload. */
@@ -63,17 +82,21 @@ export function supportsAutomaticUpdates(
 export function startUpdates(
   isTrustedSender: (event: IpcMainInvokeEvent) => boolean,
   requestRestart: () => void,
+  platform: NodeJS.Platform = process.platform,
+  releaseBuild: boolean = __NICEGAL_RELEASE_UPDATES__,
 ): {
   stop: () => void;
   deferInstallation: () => void;
   installAndRestart: () => boolean;
 } {
   const supported = supportsAutomaticUpdates(
-    app.isPackaged,
-    process.platform,
+    app.isPackaged && releaseBuild,
+    platform,
     existsSync(join(process.resourcesPath, "nicegal-installed")),
     process.env,
   );
+  const notifyOnly = app.isPackaged && releaseBuild && platform === "darwin";
+  const mode = supported ? "automatic" : notifyOnly ? "notify" : "none";
   const preferencesPath = join(app.getPath("userData"), "update-settings.json");
   let automaticUpdates = loadAutomaticUpdates(preferencesPath);
   // Once disabled, this launch stays opted out even if re-enabled. No second check, and no
@@ -83,7 +106,8 @@ export function startUpdates(
   let installationDeferred = false;
   let restartRequested = false;
   const mayUpdate = (): boolean => supported && !disabledForSession;
-  const enabled = mayUpdate();
+  const mayNotify = (): boolean => notifyOnly && !disabledForSession;
+  const enabled = mayUpdate() || mayNotify();
   let status: UpdateStatus = { phase: enabled ? "idle" : "disabled", version: null };
   let stopped = false;
   const timers: {
@@ -107,7 +131,7 @@ export function startUpdates(
   });
   ipcMain.handle(IPC_CHANNELS.updates.preferences, (event) => {
     authorize(event);
-    return { enabled: automaticUpdates, supported };
+    return { enabled: automaticUpdates, mode };
   });
   ipcMain.handle(IPC_CHANNELS.updates.setEnabled, (event, value: unknown) => {
     authorize(event);
@@ -118,15 +142,15 @@ export function startUpdates(
     if (!value) {
       disabledForSession = true;
       clearTimeout(timers.initial);
-      autoUpdater.autoInstallEvent = "manual";
+      if (supported) autoUpdater.autoInstallEvent = "manual";
       cancelDownload?.();
       publish("disabled");
     }
-    return { enabled: automaticUpdates, supported };
+    return { enabled: automaticUpdates, mode };
   });
   ipcMain.handle(IPC_CHANNELS.updates.releaseNotes, async (event) => {
     authorize(event);
-    if (status.phase !== "ready" || !status.version) return;
+    if ((status.phase !== "ready" && status.phase !== "available") || !status.version) return;
     // Never navigate to arbitrary URLs supplied by release metadata or by the renderer.
     await shell.openExternal(`${RELEASES}/tag/v${encodeURIComponent(status.version)}`);
   });
@@ -156,6 +180,22 @@ export function startUpdates(
     stopped = true;
     clearTimeout(timers.initial);
   };
+  if (mayNotify()) {
+    const checkRelease = async (): Promise<void> => {
+      try {
+        const release = await latestStableRelease();
+        if (stopped || !mayNotify()) return;
+        const available = isNewerRelease(release.version, app.getVersion());
+        publish(available ? "available" : "idle", available ? release.version : null);
+      } catch (error) {
+        console.error("Release notification check failed", error);
+        if (!stopped && mayNotify()) publish("error");
+      }
+    };
+    timers.initial = setTimeout(() => void checkRelease(), 5_000);
+    timers.initial.unref();
+    return { stop, deferInstallation, installAndRestart };
+  }
   if (!enabled) {
     autoUpdater.autoInstallEvent = "manual";
     return { stop, deferInstallation, installAndRestart };

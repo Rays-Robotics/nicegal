@@ -10,7 +10,7 @@
   let showingUpdateDialog = $state(false);
   function receiveUpdateStatus(status: UpdateState): void {
     update = status;
-    if (status.phase !== "ready") showingUpdateDialog = false;
+    if (status.phase !== "ready" && status.phase !== "available") showingUpdateDialog = false;
   }
   onMount(() => {
     // Subscribe before reading the snapshot; an intervening event is newer than that read.
@@ -68,10 +68,11 @@
   </div>
 {/if}
 
-{#if showingUpdateDialog && update.phase === "ready"}
+{#if showingUpdateDialog && (update.phase === "ready" || update.phase === "available")}
   <div class="modal-layer update-modal-layer" data-theme={theme}>
     <UpdateAvailableDialog
       version={update.version}
+      installReady={update.phase === "ready"}
       onclose={() => (showingUpdateDialog = false)}
       onnotes={() => window.nicegal.updates.openReleaseNotes()}
       onrestart={() => window.nicegal.updates.restartAndInstall()}

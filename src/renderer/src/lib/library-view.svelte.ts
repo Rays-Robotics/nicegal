@@ -243,7 +243,10 @@ export function createLibraryViewController(
     if (!gallerySelection.ids.has(item.id)) {
       gallerySelection.select(item.id, filteredItemIds, { toggle: false, extend: false });
     }
-    const assetIds = filteredItemIds.filter((id) => gallerySelection.ids.has(id));
+    const assetIds = [
+      item.id,
+      ...filteredItemIds.filter((id) => id !== item.id && gallerySelection.ids.has(id)),
+    ];
     void commands.showFileContextMenu(assetIds).catch((error: unknown) => {
       jobs.error = errorMessage(error);
     });

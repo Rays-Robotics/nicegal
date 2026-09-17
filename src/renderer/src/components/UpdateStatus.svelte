@@ -10,13 +10,17 @@
   <span class="update-status update-download" role="status" aria-live="polite">
     <CircleArrowUp size={13} aria-hidden="true" />Downloading update…
   </span>
-{:else if status.phase === "ready"}
+{:else if status.phase === "ready" || status.phase === "available"}
   <span class="update-status" role="status">
     <button
       onclick={onopen}
-      title={`Nicegal ${status.version} is ready to install. View update options.`}
+      title={status.phase === "ready"
+        ? `Nicegal ${status.version} is ready to install. View update options.`
+        : `Nicegal ${status.version} is available. View the release page.`}
     >
-      <CircleArrowUp size={13} aria-hidden="true" />Update ready
+      <CircleArrowUp size={13} aria-hidden="true" />{status.phase === "ready"
+        ? "Update ready"
+        : "Update available"}
     </button>
   </span>
 {/if}

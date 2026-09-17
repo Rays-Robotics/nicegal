@@ -5,7 +5,13 @@ import { createServer } from "vite";
 import { IPC_CHANNELS } from "../src/shared/ipc-channels.ts";
 
 const handlers = new Map<string, (event: unknown, value: unknown) => unknown>();
-Object.assign(globalThis, { __fileDragHandlers: handlers });
+const revealCalls: string[] = [];
+let fileMenu: { label?: string; click?: () => void }[] = [];
+Object.assign(globalThis, {
+  __fileDragHandlers: handlers,
+  __fileRevealCalls: revealCalls,
+  __setFileMenu: (items: typeof fileMenu) => (fileMenu = items),
+});
 const vite = await createServer({
   configFile: false,
   cacheDir: "node_modules/.vite-file-drag-tests",
@@ -22,7 +28,16 @@ const vite = await createServer({
             ? `
       export const ipcMain = { handle: (key, fn) => globalThis.__fileDragHandlers.set(key, fn) };
       export const nativeImage = { createFromPath: () => ({ resize: () => ({ icon: true }) }) };
-      export const BrowserWindow = {}, dialog = {}, Menu = {}, shell = {}, clipboard = {};
+      export const BrowserWindow = { fromWebContents: () => ({}) }, dialog = {};
+      export const Menu = { buildFromTemplate: (items) => {
+        globalThis.__setFileMenu(items);
+        return { popup: () => {} };
+      } };
+      export const shell = {
+        showItemInFolder: (path) => globalThis.__fileRevealCalls.push(path),
+        openPath: async (path) => { globalThis.__fileRevealCalls.push(path); return ""; },
+      };
+      export const clipboard = {};
       export class ClipboardItem {}
     `
             : undefined,
@@ -36,6 +51,31 @@ const vite = await createServer({
 after(() => vite.close());
 const { registerNativeIpc } = await vite.ssrLoadModule("/src/main/native/ipc.ts");
 const channels = IPC_CHANNELS.native;
+
+test("revealing a multi-selection opens only the clicked item", async () => {
+  revealCalls.length = 0;
+  registerNativeIpc({
+    isTrustedSender: () => true,
+    client: {
+      resolveAssets: async (ids: string[]) => ({
+        assets: ids.toReversed().map((id) => ({
+          id,
+          path: `${process.cwd()}/${id}.png`,
+          displayName: `${id}.png`,
+        })),
+      }),
+    },
+  });
+  const showMenu = handlers.get(channels.showFileContextMenu)!;
+  await showMenu({ sender: {} }, { assetIds: ["2", "1"] });
+  const reveal = fileMenu.find((item) => item.label?.startsWith("Reveal clicked item")) ??
+    fileMenu.find((item) => item.label === "Open clicked item's folder");
+  assert.ok(reveal?.click);
+  reveal.click();
+  assert.deepEqual(revealCalls, [
+    process.platform === "linux" ? process.cwd() : `${process.cwd()}/2.png`,
+  ]);
+});
 
 test("native dragging validates IDs, resolves groups in batches and consumes sender-bound tokens", async () => {
   const starts: unknown[] = [];

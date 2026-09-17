@@ -174,10 +174,11 @@ async function loadRenderer(mainWindow: BrowserWindow): Promise<void> {
 
 /** Keeps the user-facing chrome compact while preserving the diagnostics Electron supplies. */
 function installApplicationMenu(): void {
+  const mac = process.platform === "darwin";
   const viewItems: MenuItemConstructorOptions[] = [
     {
       label: "Toggle Developer &Tools",
-      accelerator: "Ctrl+Shift+I",
+      accelerator: "CommandOrControl+Shift+I",
       click: () => BrowserWindow.getFocusedWindow()?.webContents.toggleDevTools(),
     },
   ];
@@ -185,14 +186,10 @@ function installApplicationMenu(): void {
     viewItems.unshift({ type: "separator" });
     viewItems.unshift({ role: "reload" });
   }
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      {
-        label: "&View",
-        submenu: viewItems,
-      },
-    ]),
-  );
+  const template: MenuItemConstructorOptions[] = [];
+  if (mac) template.push({ role: "appMenu" }, { role: "editMenu" });
+  template.push({ label: mac ? "View" : "&View", submenu: viewItems });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function isTrustedRenderer(event: IpcMainInvokeEvent): boolean {

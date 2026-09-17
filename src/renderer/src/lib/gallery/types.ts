@@ -30,16 +30,18 @@ export interface GalleryItem {
   date: number;
 }
 
-/** Clamps a tile's rendered CSS edge × devicePixelRatio to the backend's supported bucket range. */
+/** Rounds a tile's physical edge up to a stored thumbnail size bucket. Stable URLs across small
+ * layout changes let the browser retain the same decoded image while the window is resized. */
 export function physicalThumbnailSize(
   renderedWidth: number,
   renderedHeight: number,
   devicePixelRatio: number,
 ): number {
-  return Math.min(
-    1024,
-    Math.max(1, Math.ceil(Math.max(renderedWidth, renderedHeight) * devicePixelRatio)),
-  );
+  const physicalPixels = Math.max(renderedWidth, renderedHeight) * devicePixelRatio;
+  if (physicalPixels <= 128) return 128;
+  if (physicalPixels <= 256) return 256;
+  if (physicalPixels <= 512) return 512;
+  return 1024;
 }
 
 /** Builds a fingerprinted thumbnail URL sized for the tile's rendered physical-pixel edge. */

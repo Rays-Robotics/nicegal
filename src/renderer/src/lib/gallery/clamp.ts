@@ -33,7 +33,7 @@ export const modeClamps: Record<LayoutMode, DisplayClamp> = {
   masonry: {
     minAspectRatio: 0.55,
     maxAspectRatio: 2,
-    minDisplayHeight: 90,
+    minDisplayHeight: 32,
     maxDisplayWidth: Number.POSITIVE_INFINITY,
   },
   grid: {

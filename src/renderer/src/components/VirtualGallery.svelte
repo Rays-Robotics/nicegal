@@ -326,8 +326,17 @@
   // Effects synchronize DOM state and schedulers; untracked reads prevent feedback loops.
 
   // Read the previous pool untracked to retain DOM slots without a feedback loop.
+  let pooledLayout: GalleryLayout | undefined;
   $effect(() => {
-    updatePool(layout, viewportHeight, scrollTop, overscan, imagePoolSize);
+    const currentLayout = layout;
+    // A width change moves the anchored item before the DOM scrollTop can be restored. Use its
+    // destination for the first pool pass so the intermediate position requests no thumbnails.
+    const top =
+      pooledLayout !== currentLayout
+        ? (anchorScrollTop(currentLayout, untrack(() => anchor)) ?? scrollTop)
+        : scrollTop;
+    pooledLayout = currentLayout;
+    updatePool(currentLayout, viewportHeight, top, overscan, imagePoolSize);
   });
 
   // Reset the anchor and DOM scroll position when the query changes.
@@ -527,22 +536,29 @@
     };
   }
 
+  function anchorScrollTop(
+    currentLayout: GalleryLayout,
+    currentAnchor: ScrollAnchor | undefined,
+  ): number | undefined {
+    if (!currentAnchor) return undefined;
+    if (currentAnchor.kind === "top") return 0;
+    if (currentAnchor.kind === "section") {
+      const section = currentLayout.dividers.find((divider) => divider.key === currentAnchor.key);
+      return section ? section.y + currentAnchor.offset : undefined;
+    }
+    const index = items.findIndex((item) => item.id === currentAnchor.id);
+    const position = currentLayout.positions[index];
+    return position
+      ? Math.max(0, position.y + position.height * currentAnchor.progress)
+      : undefined;
+  }
+
   async function restoreAnchor(currentLayout: GalleryLayout): Promise<void> {
     const currentAnchor = untrack(() => anchor);
     const currentViewport = untrack(() => viewport);
     if (!currentAnchor || !currentViewport) return;
-    let nextScrollTop = 0;
-    if (currentAnchor.kind === "section") {
-      const section = currentLayout.dividers.find((divider) => divider.key === currentAnchor.key);
-      if (!section) return;
-      nextScrollTop = section.y + currentAnchor.offset;
-    } else if (currentAnchor.kind === "item") {
-      // Rare enough (only on relayout) that a scan beats maintaining an id->index map.
-      const index = items.findIndex((item) => item.id === currentAnchor.id);
-      const position = currentLayout.positions[index];
-      if (!position) return;
-      nextScrollTop = Math.max(0, position.y + position.height * currentAnchor.progress);
-    }
+    const nextScrollTop = anchorScrollTop(currentLayout, currentAnchor);
+    if (nextScrollTop === undefined) return;
 
     // Reactive statements run before Svelte patches the DOM, so the canvas is still the previous
     // layout's height right now. Switching to a taller layout would have scrollTop clamped to the
@@ -565,24 +581,44 @@
   }
 
   function attachViewport(element: HTMLDivElement): () => void {
+    // Packing the full catalog is expensive. Keep resize feedback live, but cap relayouts while
+    // the window is being dragged and always apply the final measured width.
+    const resizeIntervalMs = 100;
+    let lastWidthUpdate = 0;
+    let pendingWidth = element.clientWidth;
+    let widthTimer: ReturnType<typeof setTimeout> | undefined;
+    const applyWidth = (): void => {
+      widthTimer = undefined;
+      lastWidthUpdate = performance.now();
+      viewportWidth = pendingWidth;
+    };
     const updatePixelRatio = (): void => {
       pixelRatio = window.devicePixelRatio || 1;
     };
     const observer = new ResizeObserver(([entry]) => {
-      const nextWidth = entry.contentRect.width;
-      viewportWidth = nextWidth;
+      pendingWidth = entry.contentRect.width;
       viewportHeight = entry.contentRect.height;
+      if (pendingWidth === viewportWidth) return;
+      const remaining = resizeIntervalMs - (performance.now() - lastWidthUpdate);
+      if (remaining <= 0) {
+        if (widthTimer !== undefined) clearTimeout(widthTimer);
+        applyWidth();
+      } else if (widthTimer === undefined) {
+        widthTimer = setTimeout(applyWidth, remaining);
+      }
     });
     observer.observe(element);
     window.addEventListener("resize", updatePixelRatio);
     updatePixelRatio();
     viewportWidth = element.clientWidth;
     viewportHeight = element.clientHeight;
+    lastWidthUpdate = performance.now();
 
     const stopMedia = media.start();
 
     return () => {
       observer.disconnect();
+      if (widthTimer !== undefined) clearTimeout(widthTimer);
       window.removeEventListener("resize", updatePixelRatio);
       stopMedia();
       thumbnailScheduler.dispose();
@@ -600,7 +636,11 @@
 <!-- Scroll methods need the element reference; attachViewport owns setup and teardown. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class={{ "gallery-viewport": true, "hide-native-scrollbar": hideNativeScrollbar }}
+  class={{
+    "gallery-viewport": true,
+    "hide-native-scrollbar": hideNativeScrollbar,
+    "crop-grid-tiles": layout.mode === "grid",
+  }}
   bind:this={viewport}
   {@attach input.attach}
   {@attach attachViewport}
@@ -860,9 +900,13 @@
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     /* Revealed by the tileImage action once this element's current src has loaded. */
     visibility: hidden;
+  }
+
+  .gallery-viewport.crop-grid-tiles .gallery-tile {
+    object-fit: cover;
   }
 
   /* `is-loaded` is added imperatively by the tileImage action, so the compiler cannot see it in

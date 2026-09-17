@@ -1,11 +1,11 @@
 export interface UpdateStatus {
-  phase: "disabled" | "idle" | "checking" | "downloading" | "ready" | "error";
+  phase: "disabled" | "idle" | "checking" | "downloading" | "ready" | "available" | "error";
   version: string | null;
 }
 
 export interface UpdatePreferences {
   enabled: boolean;
-  supported: boolean;
+  mode: "automatic" | "notify" | "none";
 }
 
 export interface UpdateBridge {

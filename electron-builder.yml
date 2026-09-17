@@ -57,14 +57,35 @@ nsis:
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
 mac:
-  extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  notarize: false
+  target:
+    - dmg
+  category: public.app-category.photography
   sign:
+    hardenedRuntime: true
+    entitlements: build/entitlements.mac.plist
     entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSPhotoLibraryUsageDescription: Application requests access to the user's photo library.
+    NSDesktopFolderUsageDescription: Application requests access to the user's Desktop folder.
+    NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    NSRemovableVolumesUsageDescription: Application requests access to removable volumes selected by the user.
+    NSNetworkVolumesUsageDescription: Application requests access to network volumes selected by the user.
+  notarize: false
+  extraResources:
+    - from: LICENSE
+      to: licenses/LICENSE
+    - from: LICENSING
+      to: licenses/LICENSING
+    - from: nicegal-server/LICENSE
+      to: licenses/nicegal-server/LICENSE
+    - from: nicegal-server/vendor/fastembed/LICENSE
+      to: licenses/nicegal-server/vendor/fastembed/LICENSE
+    - from: nicegal-server/target/release
+      to: nicegal-server
+      filter:
+        - nicegal-server
+        - onnxruntime/coreml/*.dylib
 dmg:
   artifactName: ${name}-${version}-macos-${arch}.${ext}
 linux:
