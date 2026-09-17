@@ -6,6 +6,7 @@ import type { CatalogController } from "./catalog.svelte";
 import type { GallerySection } from "./gallery/types";
 
 import { isQuerySyntaxError, searchErrorMessage } from "./errors";
+import { FilenameSearchClient } from "./filename-search-client";
 import { localDateToExclusiveNs, localDateToNs } from "./job-params";
 import { parseQuery, withScope, type DateFilter, type SearchScope } from "./search-query";
 import {
@@ -49,11 +50,10 @@ export type SearchSortMode = "relevance" | "date";
 
 /**
  * How long `schedule()` waits after the last keystroke before running filename matching and
- * firing the backend text/vector/image query. The filename scan itself is ~10ms even at 100k+ items
- * (indexed lookups, memoized `Map`), so this only has to coalesce a burst of keystrokes before
- * hitting the backend — it is not hiding slow client work.
+ * firing the backend text/vector/image query. Coalesce a typing burst so the worker and backend
+ * do not compute and transfer result sets that a later keystroke will immediately replace.
  */
-const SEARCH_DEBOUNCE_MS = 80;
+const SEARCH_DEBOUNCE_MS = 200;
 
 /** Backend API ceiling, not a relevance threshold. Report overflow rather than silently hiding
  * the tail. Relevance no longer has the frontend-only 500-result cutoff (2026-09-13). */
@@ -223,6 +223,8 @@ export class OcrSearchController {
   private clipMatchQuality = $state(DEFAULT_CLIP_MATCH_QUALITY);
 
   private filenameMatches = $state.raw<ReadonlySet<string> | null>(null);
+  private filenameOrderedIds = $state.raw<string[]>([]);
+  private readonly filenameSearch = new FilenameSearchClient();
   private generation = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private lastRoot = "";
@@ -428,6 +430,7 @@ export class OcrSearchController {
     this.rankedIds = [];
     this.scores = new Map<string, number>();
     this.filenameMatches = new Set<string>();
+    this.filenameOrderedIds = [];
     this.matches = new Set<string>();
 
     if (scope === "like" && body && !supportsImageTextQueries) {
@@ -444,8 +447,8 @@ export class OcrSearchController {
       return;
     }
 
-    // Filename matching is a synchronous full-library scan (`filenameMatchSnippets`), so it rides the
-    // same debounce as the backend request instead of running on every keystroke.
+    // The worker searches and sorts filenames after typing pauses. A catalog replacement sends
+    // its compact ID/name snapshot once; later queries send only their text.
     this.pending = true;
     const time = timeRangeForDates(dates);
     // Fast literal results need not wait for either embedder. Each lane owns its completion and
@@ -496,13 +499,14 @@ export class OcrSearchController {
       }, 400);
     }
     this.timer = setTimeout(
-      () => {
-        this.filenameSnippets =
-          scope === "ocr" || scope === "like"
-            ? new Map<string, string>()
-            : filenameMatchSnippets(items, body);
+      async () => {
+        const filenameEntries =
+          scope === "ocr" || scope === "like" ? [] : await this.filenameSearch.search(items, body);
+        if (generation !== this.generation) return;
+        this.filenameSnippets = new Map(filenameEntries);
+        this.filenameOrderedIds = filenameEntries.map(([id]) => id);
         this.filenameMatches =
-          scope === "ocr" || scope === "like" ? null : new Set(this.filenameSnippets.keys());
+          scope === "ocr" || scope === "like" ? null : new Set(this.filenameOrderedIds);
         this.matches = scope === "name" ? null : new Set<string>();
         this.total = scope === "name" ? this.filenameMatches.size : 0;
 
@@ -788,20 +792,19 @@ export class OcrSearchController {
     if (scope === "meaning" && (ranked.length || !this.indexNotice)) return ranked;
 
     const claimed = new Set(ranked.map((item) => item.id));
-    // Walk the match set, not the catalog: `filenameMatches` is already just the hits, so this is
-    // O(matches) instead of an O(catalog) scan for every keystroke.
+    // The worker already sorted filename hits, so only membership and catalog lookup remain here.
     const filenameOnly: CatalogItem[] = [];
-    for (const id of filenameMatches) {
+    for (const id of this.filenameOrderedIds) {
       if (claimed.has(id)) continue;
       const item = byId.get(id);
       if (item) filenameOnly.push(item);
     }
-    filenameOnly.sort(byFilename);
     return [...ranked, ...filenameOnly];
   }
 
   dispose(): void {
     this.suspend();
+    this.filenameSearch.dispose();
   }
 
   /** Preserve the query while the service is unavailable, and ignore obsolete responses. */
@@ -818,17 +821,6 @@ export class OcrSearchController {
     this.pending = false;
     this.error = "";
   }
-}
-
-/** Case-insensitive filename order, with the id as a tiebreak so the sort is total. */
-/** Shared across every sort call instead of building one per comparison — `localeCompare` with
- * an options object re-negotiates collation on every call, which dominates sort time once the
- * filename-only tail runs into the thousands. */
-const filenameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-
-function byFilename(left: CatalogItem, right: CatalogItem): number {
-  const compared = filenameCollator.compare(left.displayName, right.displayName);
-  return compared !== 0 ? compared : left.id.localeCompare(right.id);
 }
 
 function normalizeSearchBody(scope: SearchScope, rawBody: string): string {
@@ -868,29 +860,6 @@ function hasSearchText(body: string): boolean {
     }
   }
   return /[\p{L}\p{N}]/u.test(unquoted.replace(/\b(?:AND|OR|NOT|NEAR)(?:\/\d+)?\b/g, ""));
-}
-
-/** Display names lowercased once per item and kept as long as the item object lives, instead of
- * re-lowercasing the whole library on every keystroke. `catalog.items` is only ever reassigned
- * wholesale on a library refresh, so stale entries are simply dropped with their item. */
-const lowerDisplayNameCache = new WeakMap<CatalogItem, string>();
-
-function lowerDisplayName(item: CatalogItem): string {
-  let cached = lowerDisplayNameCache.get(item);
-  if (cached === undefined) {
-    cached = item.displayName.toLowerCase();
-    lowerDisplayNameCache.set(item, cached);
-  }
-  return cached;
-}
-
-function filenameMatchSnippets(items: CatalogItem[], query: string): Map<string, string> {
-  const normalizedQuery = query.toLowerCase();
-  return new Map(
-    items
-      .filter((item) => lowerDisplayName(item).includes(normalizedQuery))
-      .map((item) => [item.id, item.displayName]),
-  );
 }
 
 function filterItems(items: CatalogItem[], matches: ReadonlySet<string> | null): CatalogItem[] {

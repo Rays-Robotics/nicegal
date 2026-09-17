@@ -359,11 +359,15 @@ export interface CatalogSyncJobRequest {
   type: "catalogSync";
   params: {
     root: string;
+    /** Embed newly cataloged images in this same job. */
+    image?: boolean;
     scan?: {
       recursive?: boolean;
       exclude?: string[];
       /** Debug-only cap on discovered catalog entries. Omit to scan the complete root. */
       debugLimit?: number;
+      /** Only discover paths absent from the catalog; does not reconcile missing paths. */
+      newOnly?: boolean;
     };
   };
 }

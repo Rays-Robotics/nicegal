@@ -490,14 +490,18 @@ function validateJobRequest(value: unknown): JobRequest {
     };
   }
   if (request.type === "catalogSync") {
-    const params = requireJobParams(value, ["root", "scan"], "Invalid catalog sync job");
-    if (params.scan !== undefined && !isCatalogSyncScan(params.scan)) {
+    const params = requireJobParams(value, ["root", "scan", "image"], "Invalid catalog sync job");
+    if (
+      (params.scan !== undefined && !isCatalogSyncScan(params.scan)) ||
+      (params.image !== undefined && typeof params.image !== "boolean")
+    ) {
       throw new TypeError("Invalid catalog sync job");
     }
     const job: CatalogSyncJobRequest = {
       type: "catalogSync",
       params: {
         root: validateAbsoluteRoot(params.root),
+        ...(params.image === undefined ? {} : { image: params.image as boolean }),
         ...(params.scan === undefined ? {} : { scan: params.scan }),
       },
     };
@@ -551,10 +555,11 @@ function hasOnlyFields(value: Record<string, unknown>, fields: readonly string[]
 function isCatalogSyncScan(
   value: unknown,
 ): value is NonNullable<CatalogSyncJobRequest["params"]["scan"]> {
-  if (!isRecord(value) || !hasOnlyFields(value, ["recursive", "exclude", "debugLimit"]))
+  if (!isRecord(value) || !hasOnlyFields(value, ["recursive", "exclude", "debugLimit", "newOnly"]))
     return false;
   return (
     (value.recursive === undefined || typeof value.recursive === "boolean") &&
+    (value.newOnly === undefined || typeof value.newOnly === "boolean") &&
     (value.exclude === undefined ||
       (Array.isArray(value.exclude) &&
         value.exclude.every((pattern) => typeof pattern === "string"))) &&

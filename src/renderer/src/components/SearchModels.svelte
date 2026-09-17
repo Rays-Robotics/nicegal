@@ -19,6 +19,8 @@
       "Good enough for most searches. A balanced starting point.",
     "facebook/metaclip-2-worldwide-b16":
       "Sees more detail and can give slightly better results. Best with a stronger GPU.",
+    "facebook/metaclip-2-worldwide-l14":
+      "30% more image tokens than MetaCLIP2 B/16, but is very slow. 3GB download",
     "google/siglip2-base-patch16-256":
       "Similar visual search, but prioritizes results differently.",
     "deepghs/siglip_beta/smilingwolf/siglip_swinv2_base_2025_02_22_18h56m54s":
@@ -32,6 +34,10 @@
       url: "https://creativecommons.org/licenses/by-nc/4.0/",
     },
     "facebook/metaclip-2-worldwide-b16": {
+      label: "CC BY-NC 4.0",
+      url: "https://creativecommons.org/licenses/by-nc/4.0/",
+    },
+    "facebook/metaclip-2-worldwide-l14": {
       label: "CC BY-NC 4.0",
       url: "https://creativecommons.org/licenses/by-nc/4.0/",
     },

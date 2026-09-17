@@ -29,6 +29,7 @@ export class JobTracker {
   private currentJobId: string | null = null;
   private generation = 0;
   private cancelRequested = false;
+  private hideCompletedJob = false;
 
   constructor(
     private readonly onCatalogRefresh: (delay: number) => void,
@@ -43,9 +44,10 @@ export class JobTracker {
     return this.starting || Boolean(this.active && !isTerminalJobStatus(this.active.status));
   }
 
-  async start(request: JobRequest): Promise<JobSnapshot | null> {
+  async start(request: JobRequest, hideCompletedJob = false): Promise<JobSnapshot | null> {
     if (this.running) return null;
     const generation = ++this.generation;
+    this.hideCompletedJob = hideCompletedJob;
     this.cancelRequested = false;
     this.root = "root" in request.params ? request.params.root : null;
     this.error = "";
@@ -193,7 +195,7 @@ export class JobTracker {
         this.completionMessage = summarizeCompletion(snapshot, this.libraryIndexEmbeds);
         // Keep successful work in the toolbar until the user opens then closes its progress card.
         // Fast jobs otherwise mount and unmount between paints, making completion invisible.
-        if (snapshot.status !== "completed") this.active = null;
+        if (snapshot.status !== "completed" || this.hideCompletedJob) this.active = null;
         this.completionTimer = setTimeout(() => {
           this.completionMessage = "";
           this.completionTimer = null;

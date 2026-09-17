@@ -94,7 +94,7 @@ test("All publishes fast results, independent lanes, top-ten related tail and de
   const catalog = items();
   f.search.query = "needle";
   f.search.schedule("library", catalog, "modified");
-  await pause(120);
+  await pause(240);
   assert.deepEqual(
     f.requests.map((request) => request.searchLane),
     ["literal"],
@@ -233,7 +233,7 @@ test("filename captions share the OCR pool, highlight literal names, and clear w
   catalog[1].displayName = "Before OR_after.jpg";
   f.search.query = "name: OR_";
   f.search.schedule("library", catalog, "modified");
-  await pause(120);
+  await pause(240);
   assert.equal(f.requests.length, 0);
   assert.equal(f.search.displaySnippets.get("2"), "Before OR_after.jpg");
   const matching = f.search.apply(catalog).items;
@@ -269,7 +269,7 @@ test("filename captions share the OCR pool, highlight literal names, and clear w
   assert.equal(cleared[0].snippetSegments, undefined);
   f.search.query = "OR_";
   f.search.schedule("library", catalog, "modified");
-  await pause(120);
+  await pause(240);
   f.complete("literal", {
     total: 1,
     results: [{ assetId: "2", snippet: "OCR excerpt OR_", rank: 1, distance: 0 }],
@@ -356,7 +356,7 @@ test("date constraints reach all lanes; no frontend top-500 cutoff remains", asy
   );
   f.search.query = "like: needle";
   f.search.schedule("library", catalog, "modified");
-  await pause(120);
+  await pause(240);
   f.complete("literal", response(catalog.map((item) => item.id)));
   await pause(5);
   assert.equal(f.search.apply(catalog).items.length, 700);
@@ -411,7 +411,7 @@ test("All without OCR retains filename matches alongside visual results", async 
   assert.equal(f.search.indexNotice, "");
   f.search.query = "name: needle";
   f.search.schedule("library", items(), "modified", true, false);
-  await pause(120);
+  await pause(240);
   assert.equal(f.requests.length, 1);
   assert.deepEqual(
     f.search.apply(items()).items.map((item) => item.id),
@@ -509,7 +509,7 @@ test("missing text coverage exposes setup state independently of library status 
     });
     f.search.query = `${prefix} needle`;
     f.search.schedule("library", items(), "modified");
-    await pause(120);
+    await pause(240);
     assert.equal(f.search.textSetupRequired, true);
     assert.equal(f.requests.length, 0);
     f.search.query = "name: needle";
