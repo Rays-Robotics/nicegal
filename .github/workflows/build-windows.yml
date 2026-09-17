@@ -212,7 +212,7 @@ jobs:
             fi
           done
 
-      - name: Verify macOS DMG and bundled server
+      - name: Verify macOS DMG, signing, and bundled server
         if: runner.os == 'macOS'
         shell: bash
         run: |
@@ -239,6 +239,9 @@ jobs:
               exit 1
             fi
           done
+          app="dist/$unpacked_dir/nicegal.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app" 2>&1 | grep -q 'Signature=adhoc'
 
       - name: Attest downloads
         if: github.repository == 'centuryofimage/nicegal' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'

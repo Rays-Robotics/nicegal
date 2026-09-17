@@ -61,6 +61,7 @@ mac:
     - dmg
   category: public.app-category.photography
   sign:
+    identity: "-"
     hardenedRuntime: true
     entitlements: build/entitlements.mac.plist
     entitlementsInherit: build/entitlements.mac.plist
