@@ -141,6 +141,23 @@
 <svelte:window
   onkeydown={(event) => {
     if (event.defaultPrevented) return;
+
+    function commandOrCtrl(event: KeyboardEvent): boolean {
+      return event.metaKey || event.ctrlKey;
+    }
+
+    if (
+      commandOrCtrl(event) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !event.repeat &&
+      event.key.toLowerCase() === "l"
+    ) {
+      event.preventDefault();
+      commands.focusSearchInput();
+      return;
+    }
+
     const target = event.target;
     if (
       event.key.toLowerCase() === "i" &&

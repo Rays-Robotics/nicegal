@@ -172,7 +172,6 @@ async function loadRenderer(mainWindow: BrowserWindow): Promise<void> {
   if (!mainWindow.isDestroyed()) mainWindow.show();
 }
 
-/** Keeps the user-facing chrome compact while preserving the diagnostics Electron supplies. */
 function installApplicationMenu(): void {
   const mac = process.platform === "darwin";
   const viewItems: MenuItemConstructorOptions[] = [

@@ -20,6 +20,7 @@
   import VisualSearchComposer from "./VisualSearchComposer.svelte";
   const {
     services: { runtime, catalog },
+    commands: { providesShortcuts },
   } = useApplication();
 
   // The match count used to sit at the right of the field; it lives in the status bar's items
@@ -285,6 +286,11 @@
     event.preventDefault();
     ondropvisualfiles?.(files);
   }
+
+  $effect(() => {
+    providesShortcuts("searchInput", inputEl);
+    return () => providesShortcuts("searchInput", null);
+  })
 </script>
 
 <!-- Keyboard events are delegated from the search controls and the nested composer. -->
