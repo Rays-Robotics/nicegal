@@ -299,6 +299,20 @@ jobs:
           merge-multiple: true
           path: dist
 
+      - name: Build release notes
+        shell: bash
+        run: |
+          version="${{ needs.version.outputs.version }}"
+          base_url="https://github.com/$GITHUB_REPOSITORY/releases/download/v$version"
+          test -s .github/RELEASE_NOTES_TEMPLATE.md
+          template="$(<.github/RELEASE_NOTES_TEMPLATE.md)"
+          template="${template//\{\{VERSION\}\}/$version}"
+          template="${template//\{\{RELEASE_URL\}\}/$base_url}"
+          {
+            cat CHANGELOG
+            printf '\n\n%s\n' "$template"
+          } > RELEASE_BODY.md
+
       - name: Tag and publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -309,6 +323,6 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "nicegal $version" \
             --latest \
-            --notes-file CHANGELOG \
+            --notes-file RELEASE_BODY.md \
             dist/*.exe dist/*.zip dist/*.blockmap dist/latest.yml \
             dist/*.AppImage dist/*.deb dist/*.dmg dist/latest-linux.yml dist/*.intoto.jsonl

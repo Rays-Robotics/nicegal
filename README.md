@@ -1,5 +1,7 @@
 # Nicegal
 
+[**Download the latest release**](https://github.com/centuryofimage/nicegal/releases/latest)
+
 nicegal is a super fast desktop gallery. it has powerful search features, and is designed to help people find stuff in gigantic unsorted downloads folders.
 
 it supports searching the text inside images with optical character recognition (PaddleOCR), and visually searching images with CLIP. you can also search for images with other images. the OCR and CLIP search indexing uses your gpu if you have one, through DirectML and WebGPU.
