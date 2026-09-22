@@ -46,11 +46,11 @@
 
 <section class="indexing" aria-label="Library search">
   <div class="index-actions">
-    <strong>Search indexing</strong>
+    <strong>Indexing</strong>
     <button
       class="ui-button"
       disabled={!catalog.backendStatus.ready || busy || (!selection.ocr && !selection.image)}
-      onclick={() => commands.startIndex(root)}>Index</button
+      onclick={() => commands.startIndex(root)}>Prepare search</button
     >
     {#if busy && (ownsJob || ownsIndex)}
       <button
@@ -61,6 +61,7 @@
     {/if}
   </div>
   <div class="index-options" role="group" aria-label="Search types for this library">
+    <p>On next index:</p>
     <label
       ><input
         type="checkbox"
@@ -68,7 +69,7 @@
         onchange={(event) =>
           setLibraryIndexing(root, { ...selection, image: event.currentTarget.checked })}
         disabled={busy}
-      /> Image search</label
+      /> Image search (prepared automatically for new folders)</label
     >
     <div class="text-recognition-option">
       <label
@@ -84,12 +85,9 @@
       <p id={hintId}>10x slower than image search indexing, but good for precise text searches</p>
     </div>
   </div>
-  <p>Choices are saved for this library.</p>
-  <p>
-    Index new and changed pictures. The first run downloads models; pictures stay on your computer.
-  </p>
+  <p>Required models download automatically. Pictures stay on your computer.</p>
   {#if restarting}
-    <p role="status">Switching to CPU… Indexing will continue automatically.</p>
+    <p role="status">Recovering search preparation… This will continue automatically.</p>
   {:else if job}
     {#if jobs.running}
       <JobProgress {job} />
@@ -100,10 +98,10 @@
     {:else if job.status === "cancelled"}
       <p role="status">Stopped. Completed work is retained.</p>
     {:else if job.status === "failed"}
-      <p role="status">Indexing could not finish. Review the details, then try again.</p>
+      <p role="status">Search preparation could not finish. Choose Prepare search to try again.</p>
     {/if}
   {:else if ownsIndex && orchestrator.indexing}
-    <p role="status">Starting indexing…</p>
+    <p role="status">Preparing search…</p>
   {/if}
   {#if jobs.active?.status === "cancelling" && (ownsJob || ownsIndex)}
     <p>Stopping after the current download or model operation finishes…</p>

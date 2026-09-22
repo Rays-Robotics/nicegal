@@ -91,7 +91,7 @@ test("cataloging and indexing rates occupy the final status segment only while a
 
 test("image coverage is independent of OCR and uses the image denominator", () => {
   const html = statusMarkup({ ...empty, imageCoverage: { indexed: 25, total: 80 } }, 12.5);
-  assert.match(html, /25 \/ 80 indexed/);
+  assert.match(html, /25 \/ 80 scanned/);
   assert.doesNotMatch(html, /index-status[^>]*title=|images\/s|with text/);
 });
 
@@ -102,11 +102,11 @@ test("complete image coverage collapses to one number, including zero", () => {
       null,
       false,
     );
-    assert.match(html, new RegExp(`>${count} indexed<`));
+    assert.match(html, new RegExp(`>${count} scanned<`));
     assert.doesNotMatch(html, /index-status[^>]*title=/);
   }
   assert.match(
     statusMarkup({ ...empty, imageCoverage: { indexed: 0, total: 80 } }, null),
-    /0 \/ 80 indexed/,
+    /0 \/ 80 scanned/,
   );
 });

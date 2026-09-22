@@ -17,8 +17,98 @@ after(() => vite.close());
 const { OcrSearchController } = (await vite.ssrLoadModule(
   "/src/renderer/src/lib/ocr-search.svelte.ts",
 )) as { OcrSearchController: typeof Controller };
+
+test("visual search waits for image coverage, then runs the unchanged query when ready", async () => {
+  const { search, requests } = fixture();
+  search.query = "like: cat";
+  search.schedule("C:/pictures", [], "modified", true, false, false);
+  await pause();
+  assert.equal(requests.length, 0);
+  assert.equal(search.imageSetupRequired, true);
+  assert.match(search.indexNotice, /not ready/);
+  search.schedule("C:/pictures", [], "modified", true, false, true);
+  await pause();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].type, "image");
+  assert.equal(search.imageSetupRequired, false);
+  search.dispose();
+});
+
+test("adding a library starts one backend image index without enabling OCR", async () => {
+  const { createApplication } = await vite.ssrLoadModule(
+    "/src/renderer/src/lib/application.svelte.ts",
+  );
+  const requests: unknown[] = [];
+  globalThis.window = {
+    nicegal: {
+      backend: {
+        startJob: async (request: unknown) => {
+          requests.push(request);
+          return {
+            jobId: "automatic-images",
+            type: "libraryIndex",
+            status: "running",
+            phase: "loadingModels",
+            progress: { cataloged: 0, thumbnailsGenerated: 0 },
+            errors: [],
+          };
+        },
+        subscribeJob: () => () => {},
+      },
+    },
+  } as unknown as Window & typeof globalThis;
+  const app = createApplication();
+  await app.commands.syncNewLibrary("C:/new-pictures");
+  assert.deepEqual(requests, [
+    {
+      type: "libraryIndex",
+      params: {
+        root: "C:/new-pictures",
+        ocr: false,
+        image: true,
+        scan: { recursive: true, cleanup: false },
+      },
+    },
+  ]);
+  await app.commands.syncNewLibrary("C:/another-folder");
+  assert.equal(requests.length, 1, "do not queue another index while one is running");
+  app.services.jobs.dispose();
+  app.services.ocrSearch.dispose();
+});
 const photo = { id: "1", displayName: "cat.jpg" };
 const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 300));
+
+test("visual file picker results belong to the search session that opened it", async () => {
+  const { chooseVisualFile } = await vite.ssrLoadModule(
+    "/src/renderer/src/lib/visual-search-input.ts",
+  );
+  const { search } = fixture();
+  search.query = "like: cat";
+  let resolvePicker!: (value: { displayName: string; bytesBase64: string }) => void;
+  window.nicegal.native = {
+    chooseVisualSearchImage: () =>
+      new Promise((resolve) => {
+        resolvePicker = resolve;
+      }),
+  } as typeof window.nicegal.native;
+  const pending = chooseVisualFile(search);
+  search.query = "name: dog";
+  resolvePicker({ displayName: "example.jpg", bytesBase64: "aW1hZ2U=" });
+  await pending;
+  assert.equal(search.query, "name: dog");
+  assert.equal(
+    search.visualReferences.length,
+    0,
+    "late picker results cannot reopen visual search",
+  );
+
+  search.query = "like:";
+  const current = chooseVisualFile(search);
+  resolvePicker({ displayName: "example.jpg", bytesBase64: "aW1hZ2U=" });
+  await current;
+  assert.equal(search.visualReferences.length, 1);
+  search.dispose();
+});
 
 function fixture(): { search: Controller; requests: SearchRequest[] } {
   const requests: SearchRequest[] = [];

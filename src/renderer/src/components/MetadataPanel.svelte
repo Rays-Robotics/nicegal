@@ -111,25 +111,23 @@
               : info.file.attributes.join(", ") || "None"}
           </dd>
         </dl>
-        <h3>Search indexing</h3>
+        <h3>Search availability</h3>
         <dl>
-          <dt>OCR</dt>
+          <dt>Text recognition</dt>
           <dd>
-            {{ indexed: "Indexed", stale: "Needs update", notIndexed: "Not indexed" }[
-              info.ocrState
-            ]}
+            {{ indexed: "Ready", stale: "Needs update", notIndexed: "Not prepared" }[info.ocrState]}
           </dd>
           <dt>Text meaning</dt>
           <dd>
             {{
-              embedded: "Indexed",
+              embedded: "Ready",
               noText: "No text found",
               pending: "Pending",
-              notIndexed: "Needs OCR indexing",
+              notIndexed: "Needs text recognition",
             }[info.textState]}
           </dd>
           <dt>Visual search</dt>
-          <dd>{info.imageIndexed ? "Indexed" : "Needs indexing"}</dd>
+          <dd>{info.imageIndexed ? "Ready" : "Not prepared"}</dd>
         </dl>
         <h3>Recognized text</h3>
         {#if info.ocrText?.trim()}
@@ -142,7 +140,7 @@
         {:else if info.ocrState === "indexed"}
           <p>No text found in this image.</p>
         {:else}
-          <p>OCR text will appear here after this image is indexed.</p>
+          <p>Enable text recognition in Libraries to read words in this image.</p>
         {/if}
         {#if info.decodeFailed}<p>
             The file could not be decoded during indexing. Use Libraries → Advanced options → Retry

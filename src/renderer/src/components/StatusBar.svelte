@@ -109,8 +109,8 @@
     if (!coverage) return "";
     const indexed = coverage.indexed.toLocaleString();
     return coverage.indexed === coverage.total
-      ? `${indexed} indexed`
-      : `${indexed} / ${coverage.total.toLocaleString()} indexed`;
+      ? `${indexed} scanned`
+      : `${indexed} / ${coverage.total.toLocaleString()} scanned`;
   });
   const rateText = $derived(job ? jobRateText(job) : "");
 </script>

@@ -179,6 +179,7 @@ export class OcrSearchController {
   error = $state("");
   indexNotice = $state("");
   textSetupRequired = $state(false);
+  imageSetupRequired = $state(false);
   /** Set only after the current query's coverage check confirms a semantic search can run. */
   semanticAvailable = $state(false);
   total = $state(0);
@@ -397,6 +398,7 @@ export class OcrSearchController {
     timeline: Timeline,
     supportsImageTextQueries = true,
     hasOcr = true,
+    hasImages = true,
   ): void {
     if (this.timer) clearTimeout(this.timer);
     if (this.broadTimer) clearTimeout(this.broadTimer);
@@ -423,6 +425,7 @@ export class OcrSearchController {
     this.error = "";
     this.indexNotice = "";
     this.textSetupRequired = false;
+    this.imageSetupRequired = false;
     this.semanticAvailable = false;
     this.pending = false;
     this.snippets = new Map<string, string>();
@@ -447,6 +450,13 @@ export class OcrSearchController {
       return;
     }
 
+    if (scope === "like" && !hasImages) {
+      this.imageSetupRequired = true;
+      this.indexNotice = "Visual search is not ready for this library yet.";
+      this.total = 0;
+      return;
+    }
+
     // The worker searches and sorts filenames after typing pauses. A catalog replacement sends
     // its compact ID/name snapshot once; later queries send only their text.
     this.pending = true;
@@ -455,11 +465,11 @@ export class OcrSearchController {
     // error state; one failed or unavailable engine must never discard successful sibling results.
     // The shared session cancels obsolete work; the renderer generation also guards late replies.
     if (scope === "all" && root && time !== null) {
-      this.broadPending = { meaning: hasOcr, visual: supportsImageTextQueries };
+      this.broadPending = { meaning: hasOcr, visual: supportsImageTextQueries && hasImages };
       this.broadTimer = setTimeout(() => {
         for (const lane of ["meaning", "visual"] as const) {
           if (lane === "meaning" && !hasOcr) continue;
-          if (lane === "visual" && !supportsImageTextQueries) continue;
+          if (lane === "visual" && (!supportsImageTextQueries || !hasImages)) continue;
           void window.nicegal.backend
             .searchOcr({
               query: body,
@@ -604,9 +614,12 @@ export class OcrSearchController {
                 const message = searchErrorMessage(error);
                 console.warn("Search failed", error);
                 this.error =
-                  scope === "all" && !isQuerySyntaxError(message)
-                    ? "Text search unavailable. Try again."
-                    : message;
+                  scope === "like" &&
+                  /model.*not ready|prepare.*search|prepar.*model/i.test(message)
+                    ? "Visual search needs preparation. Open Libraries and choose Prepare search."
+                    : scope === "all" && !isQuerySyntaxError(message)
+                      ? "Text search unavailable. Try again."
+                      : message;
               }),
             )
             .finally(() =>
@@ -616,9 +629,7 @@ export class OcrSearchController {
             );
         };
 
-        // The documented embedding-coverage endpoint reports OCR-text vectors only. CLIP image
-        // coverage has no equivalent yet, so run the text-to-image search and let its empty result
-        // mean exactly that — not a guessed “not indexed” state.
+        // Image availability is supplied from the selected library's coverage above.
         if (scope === "like") {
           runSearch();
           return;

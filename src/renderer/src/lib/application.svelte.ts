@@ -39,13 +39,7 @@ export interface ApplicationCommands {
   readonly removeLibrary: (root: string, purge: boolean) => Promise<void>;
   readonly dismissWelcome: () => void;
   readonly showWelcome: () => void;
-  readonly focusSearchInput: () => void;
-  readonly providesShortcuts: (ref: keyof ShortcutRefs, element: HTMLInputElement | null) => void;
 }
-
-export type ShortcutRefs = {
-  searchInput: HTMLInputElement | null;
-};
 
 export interface ApplicationContext {
   readonly services: ApplicationServices;
@@ -61,7 +55,6 @@ class Application implements ApplicationContext {
   initialized = $state(false);
   librarySelectionRevision = $state(0);
   welcomeVisible = $state(false);
-  shortcuts: ShortcutRefs = { searchInput: null };
 
   private started = false;
   private backendInitialized = false;
@@ -114,13 +107,6 @@ class Application implements ApplicationContext {
       showWelcome: () => {
         this.welcomeVisible = true;
       },
-      focusSearchInput: () => {
-        const searchInput = this.shortcuts.searchInput;
-        if (searchInput) {
-          searchInput.focus();
-        }
-      },
-      providesShortcuts: this.providesShortcuts.bind(this),
     });
   }
 
@@ -238,6 +224,11 @@ class Application implements ApplicationContext {
       }
     }
     if (jobs.running || !rootsMatch(root, catalog.libraryRoot)) return;
+    // A library added before automatic preparation may never have been indexed.
+    if (!image && libraryIndexing(get(settings), root).image) {
+      await this.syncNewLibrary(root);
+      return;
+    }
     await this.startCatalogSync(root, { newOnly: true, image });
   }
 
@@ -266,7 +257,15 @@ class Application implements ApplicationContext {
   }
 
   private async syncNewLibrary(root: string): Promise<void> {
-    await this.startCatalogSync(root);
+    const { jobs, orchestrator } = this.services;
+    if (jobs.running || orchestrator.indexing || !root) return;
+    if (!libraryIndexing(get(settings), root).image) {
+      await this.startCatalogSync(root);
+      return;
+    }
+    this.manualImageIndexRoot = root;
+    await orchestrator.startLibraryIndex(root, false, { ocr: false, image: true });
+    if (!jobs.running && !orchestrator.indexing) this.manualImageIndexRoot = null;
   }
 
   private async startIndex(root: string, retryFailed = false): Promise<void> {
@@ -345,10 +344,6 @@ class Application implements ApplicationContext {
   private toBucketList(values: number[]): IndexBucket[] {
     const validBuckets: readonly number[] = [128, 256, 512, 1024];
     return values.filter((value): value is IndexBucket => validBuckets.includes(value));
-  }
-
-  providesShortcuts(ref: keyof ShortcutRefs, element: HTMLInputElement | null): void {
-    this.shortcuts[ref] = element;
   }
 }
 

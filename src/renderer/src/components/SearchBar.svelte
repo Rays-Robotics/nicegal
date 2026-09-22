@@ -19,8 +19,7 @@
   import { parseVisualTextTerms, type VisualReferenceTerm } from "../lib/visual-query";
   import VisualSearchComposer from "./VisualSearchComposer.svelte";
   const {
-    services: { runtime, catalog },
-    commands: { providesShortcuts },
+    services: { runtime, catalog, jobs, orchestrator },
   } = useApplication();
 
   // The match count used to sit at the right of the field; it lives in the status bar's items
@@ -140,12 +139,42 @@
   }
 
   let inputEl: HTMLInputElement;
+  export function focus(): void {
+    inputEl?.focus();
+  }
   let backdropEl: HTMLDivElement;
   let menuOpen = $state(false);
   let searchBarEl: HTMLDivElement;
   const hintId = $props.id();
 
   const parsed = $derived(parseQuery(value));
+  // Keep the scope in the serialized query, but outside the editable body. Typed scope
+  // operators still override the picker; other operators remain part of the editable text.
+  const inputValue = $derived.by(() => {
+    const text = parsed.tokens
+      .filter((token) => token.kind !== "scope")
+      .map((token) => token.raw)
+      .join("");
+    return parsed.scope === "all" ? text : text.replace(/^ /, "");
+  });
+  const inputTokens = $derived(parseQuery(inputValue).tokens);
+  function setInputValue(text: string): void {
+    value =
+      parseQuery(text).scope !== "all" || parsed.scope === "all"
+        ? text
+        : `${parsed.scope}: ${text}`;
+  }
+  const preparingImages = $derived(
+    (jobs.running || orchestrator.indexing) &&
+      (jobs.root === catalog.libraryRoot || orchestrator.indexRoot === catalog.libraryRoot),
+  );
+  const imageNotice = $derived(
+    parsed.scope === "like" && (catalog.selectedStatus?.imageCoverage?.indexed ?? 0) === 0
+      ? preparingImages
+        ? "Preparing visual search… You can keep browsing."
+        : "Visual search is not ready for this library yet."
+      : "",
+  );
   const exampleCount = $derived(parseVisualTextTerms(parsed.body).length + visualReferences.length);
   const selectedScope = $derived(
     scopeOptions.find((option) => option.scope === parsed.scope) ?? scopeOptions[0],
@@ -166,9 +195,7 @@
   );
   const ScopeIcon = $derived(selectedScope.icon);
   /**
-   * Ghost text drawn after the scope prefix while the body is still empty — the moment right
-   * after picking a scope, which is where the tooltip can no longer reach. Empty for scope
-   * "all", which has no prefix to trail and shows the placeholder instead.
+   * Empty scoped searches show their syntax hints; All uses the regular placeholder.
    */
   const scopeHint = $derived.by(() => {
     if (parsed.scope === "all" || parsed.body.trim()) return "";
@@ -179,15 +206,14 @@
           ? `Images ${reference.polarity === "less" ? "less " : ""}like ${reference.displayName}`
           : `Visual search with ${visualReferences.length} images`
         : scopeHintText(selectedScope);
-    return /\s$/.test(value) ? text : ` ${text}`;
+    return text;
   });
   /** Syntax reminder under a rejected query — the same line the empty box shows as ghost text,
    * repeated where the user actually is when they get it wrong. */
   const messageHint = $derived(
     message && isQuerySyntaxError(message) ? OCR_SYNTAX_NOTES.join(SYNTAX_GAP) : "",
   );
-  // Only ever seen in scope "all": picking any other scope types its prefix into the box, and a
-  // non-empty box hides the placeholder.
+  // Scoped searches use the syntax hint instead.
   const placeholder = "Search file names, text, and images";
 
   function selectScope(scope: SearchScope): void {
@@ -235,7 +261,7 @@
   function clear(): void {
     dismissPopovers();
     onvisualreferenceschange?.([]);
-    value = "";
+    value = withScope("", parsed.scope);
     inputEl?.focus();
   }
 
@@ -261,7 +287,7 @@
       return;
     }
 
-    if (event.target === inputEl && (value || visualReferences.length)) {
+    if (event.target === inputEl && (inputValue || visualReferences.length)) {
       event.preventDefault();
       event.stopPropagation();
       clear();
@@ -286,11 +312,6 @@
     event.preventDefault();
     ondropvisualfiles?.(files);
   }
-
-  $effect(() => {
-    providesShortcuts("searchInput", inputEl);
-    return () => providesShortcuts("searchInput", null);
-  })
 </script>
 
 <!-- Keyboard events are delegated from the search controls and the nested composer. -->
@@ -360,14 +381,14 @@
       <!-- The hint rides a data attribute and a ::after rather than a trailing element: the
            backdrop is `white-space: pre`, so any markup added here prints its own indentation. -->
       <div class="input-backdrop" bind:this={backdropEl} data-hint={scopeHint} aria-hidden="true">
-        {#each parsed.tokens as token (token)}{#if token.kind === "scope" || token.kind === "date"}<span
+        {#each inputTokens as token (token)}{#if token.kind === "scope" || token.kind === "date"}<span
               class:token-invalid={token.kind === "date" && !token.valid}
               class="token">{token.raw}</span
             >{:else}{token.raw}{/if}{/each}
       </div>
       <input
         bind:this={inputEl}
-        bind:value
+        bind:value={() => inputValue, setInputValue}
         readonly={parsed.scope === "like" && !runtime.supportsImageTextQueries}
         onclick={() => {
           if (parsed.scope === "like" && !runtime.supportsImageTextQueries && !composerOpen)
@@ -375,7 +396,7 @@
         }}
         onscroll={syncBackdrop}
         type="text"
-        {placeholder}
+        placeholder={parsed.scope === "all" ? placeholder : ""}
         spellcheck="false"
         autocomplete="off"
         aria-label="Search"
@@ -398,7 +419,7 @@
       </button>
     {/if}
 
-    {#if value || visualReferences.length}
+    {#if inputValue || visualReferences.length}
       <button
         class="clear-button"
         type="button"
@@ -450,11 +471,13 @@
         {#if messageHint}<span class="search-message-hint">{messageHint}</span>{/if}
       </div>
     </div>
-  {:else if (ocrNotice || infoNotice) && !menuOpen}
+  {:else if (imageNotice || ocrNotice || infoNotice) && !menuOpen}
     <div class="search-message search-info" role="status">
       <Info size={12} aria-hidden="true" />
-      <span>{ocrNotice || infoNotice}</span>
-      {#if ocrNotice}
+      <span>{imageNotice || ocrNotice || infoNotice}</span>
+      {#if imageNotice && !preparingImages}
+        <button class="ui-button" type="button" onclick={onsetuptextsearch}>Open Libraries</button>
+      {:else if ocrNotice}
         <button class="ui-button" type="button" onclick={onsetuptextsearch}
           >Set up text search</button
         >

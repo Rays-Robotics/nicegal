@@ -38,7 +38,7 @@ export interface LibraryViewController {
   startWelcomeLibraryPicker(): void;
   openLibrariesDialog(): void;
   openSettingsDialog(): void;
-  handleKeydown(event: KeyboardEvent): void;
+  dismissSelectionOrDetail(): void;
   switchToMeaningSearch(): void;
   openDetail(index: number): void;
   openFileMenu(index: number): void;
@@ -78,6 +78,7 @@ export function createLibraryViewController(
     const status = catalog.selectedStatus;
     return !status || status.indexed > 0;
   });
+  const hasImages = $derived((catalog.selectedStatus?.imageCoverage?.indexed ?? 0) > 0);
   const layoutPreferences = fromStore(layoutOptions);
   const galleryScroll = new GalleryScrollState();
   const searchIdentity = $derived(
@@ -188,7 +189,10 @@ export function createLibraryViewController(
     }
     void visualReferenceRevision;
     const imageTextAvailable = supportsImageTextQueries;
-    untrack(() => ocrSearch.schedule(root, items, timeline, imageTextAvailable, ocrAvailable));
+    const imageAvailable = hasImages;
+    untrack(() =>
+      ocrSearch.schedule(root, items, timeline, imageTextAvailable, ocrAvailable, imageAvailable),
+    );
   });
   $effect(() => {
     const catalogItems = searchCatalog.items;
@@ -224,9 +228,7 @@ export function createLibraryViewController(
     activeDialog = "settings";
     if (catalog.backendStatus.ready && !runtime.status && !runtime.loading) void runtime.refresh();
   }
-  function handleKeydown(event: KeyboardEvent): void {
-    if (event.key !== "Escape") return;
-    if (document.fullscreenElement) return;
+  function dismissSelectionOrDetail(): void {
     if (detailIndex !== null) closeDetail();
     else if (gallerySelection.count > 0) gallerySelection.clear();
   }
@@ -508,7 +510,7 @@ export function createLibraryViewController(
     startWelcomeLibraryPicker,
     openLibrariesDialog,
     openSettingsDialog,
-    handleKeydown,
+    dismissSelectionOrDetail,
     switchToMeaningSearch,
     openDetail,
     openFileMenu,

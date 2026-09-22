@@ -59,9 +59,10 @@
     if (status.error) return `Library index status error: ${status.error}`;
     return [
       `${status.cataloged.toLocaleString()} files`,
-      `${status.indexed.toLocaleString()} with OCR text`,
-      `${status.embedded.toLocaleString()} of ${status.indexed.toLocaleString()} OCR results embedded for meaning search`,
-      `${status.pending.toLocaleString()} without a current meaning embedding`,
+      status.imageCoverage
+        ? `${status.imageCoverage.indexed.toLocaleString()} of ${status.imageCoverage.total.toLocaleString()} images ready for visual search`
+        : "Visual search status unavailable",
+      `${status.indexed.toLocaleString()} processed for text recognition`,
     ].join(", ");
   }
 
@@ -149,56 +150,59 @@
   </div>
   <p class="library-hint">
     {#if jobRunning}<span class="job-note">Library changes are unavailable while a job runs.</span
-      >{:else}Select a library to browse or manage it.{/if}
+      >{:else if selectedLibrary}Managing {selectedLibrary.displayName}{:else}Select a library to
+      browse or manage it.{/if}
   </p>
 
-  {#if selectedLibrary}
-    <LibraryIndexing root={selectedLibrary.root}>
-      <section
-        class="thumbnail-options"
-        aria-label={`Thumbnail options for ${selectedLibrary.displayName}`}
-      >
-        <h2>Thumbnails</h2>
-        <p>Thumbnails are generated on demand. Pre-generate only if you need them.</p>
-        <div class="bucket-row">
-          {#each bucketOptions as bucket (bucket)}
-            <label class="bucket-option">
-              <input
-                type="checkbox"
-                checked={selectedBuckets.includes(bucket)}
-                onchange={() => toggleBucket(bucket)}
-                disabled={jobRunning}
-              />
-              {bucket}px
+  {#snippet libraryOptions()}
+    {#if selectedLibrary}
+      <LibraryIndexing root={selectedLibrary.root}>
+        <section
+          class="thumbnail-options"
+          aria-label={`Thumbnail options for ${selectedLibrary.displayName}`}
+        >
+          <h2>Thumbnails</h2>
+          <p>Thumbnails are generated on demand. Pre-generate only if you need them.</p>
+          <div class="bucket-row">
+            {#each bucketOptions as bucket (bucket)}
+              <label class="bucket-option">
+                <input
+                  type="checkbox"
+                  checked={selectedBuckets.includes(bucket)}
+                  onchange={() => toggleBucket(bucket)}
+                  disabled={jobRunning}
+                />
+                {bucket}px
+              </label>
+            {/each}
+            <label class="range-toggle">
+              <input type="checkbox" bind:checked={limitToRange} disabled={jobRunning} />
+              Date range
             </label>
-          {/each}
-          <label class="range-toggle">
-            <input type="checkbox" bind:checked={limitToRange} disabled={jobRunning} />
-            Date range
-          </label>
-        </div>
-        {#if limitToRange}
-          <div class="range-row">
-            <label>From <input type="date" bind:value={fromDate} disabled={jobRunning} /></label>
-            <label>To <input type="date" bind:value={toDate} disabled={jobRunning} /></label>
           </div>
-        {/if}
-        <div class="thumbnail-actions">
-          <button
-            class="ui-button ui-button-compact"
-            onclick={() => startBackfill(selectedLibrary.root)}
-            disabled={!backendReady || jobRunning || selectedBuckets.length === 0}
-          >
-            Generate
-          </button>
-        </div>
-      </section>
-    </LibraryIndexing>
-    <ThumbnailFailures failures={thumbnailFailures} onretry={onretrythumbnails} />
-  {/if}
+          {#if limitToRange}
+            <div class="range-row">
+              <label>From <input type="date" bind:value={fromDate} disabled={jobRunning} /></label>
+              <label>To <input type="date" bind:value={toDate} disabled={jobRunning} /></label>
+            </div>
+          {/if}
+          <div class="thumbnail-actions">
+            <button
+              class="ui-button ui-button-compact"
+              onclick={() => startBackfill(selectedLibrary.root)}
+              disabled={!backendReady || jobRunning || selectedBuckets.length === 0}
+            >
+              Generate
+            </button>
+          </div>
+        </section>
+      </LibraryIndexing>
+      <ThumbnailFailures failures={thumbnailFailures} onretry={onretrythumbnails} />
+    {/if}
+  {/snippet}
 
   <div class="list-heading" aria-hidden="true">
-    <span>Library</span><span>Files</span><span>OCR</span><span>Text embeddings</span>
+    <span>Library</span><span>Files</span><span>Visual search</span><span>Text recognition</span>
   </div>
   <ul class="library-list" aria-label="Libraries">
     {#each libraries as library (library.root)}
@@ -242,15 +246,15 @@
                 <dd>{status.cataloged.toLocaleString()}</dd>
               </div>
               <div>
-                <dt>OCR</dt>
+                <dt>Visual search</dt>
                 <dd>
-                  {status.indexed.toLocaleString()}
+                  {status.imageCoverage?.indexed.toLocaleString() ?? "—"}
                 </dd>
               </div>
               <div>
-                <dt>Text embeddings</dt>
+                <dt>Text recognition</dt>
                 <dd>
-                  {status.embedded.toLocaleString()}
+                  {status.indexed.toLocaleString()}
                 </dd>
               </div>
             </dl>
@@ -261,6 +265,7 @@
       <li class="empty-state">Add an image folder to create your first library.</li>
     {/each}
   </ul>
+  {@render libraryOptions()}
 
   {#if removeTarget}
     <div
@@ -308,7 +313,7 @@
     font-weight: var(--font-weight-semibold);
   }
   .libraries-dialog {
-    --metric-columns: 75px 75px 115px;
+    --metric-columns: 55px 95px 115px;
     box-sizing: border-box;
     width: 100%;
     max-height: min(var(--dialog-max-height), 100%);

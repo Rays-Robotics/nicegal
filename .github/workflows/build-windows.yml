@@ -185,7 +185,7 @@ jobs:
           $prefix = 'dist/nicegal-${{ needs.version.outputs.version }}-windows-x64'
           $expected = @(
             "$prefix-setup.exe", "$prefix-setup.exe.blockmap",
-            "$prefix.zip", "$prefix-portable.exe", 'dist/latest.yml',
+            "$prefix.zip", 'dist/latest.yml',
             'dist/win-unpacked/resources/app-update.yml',
             'dist/win-unpacked/resources/nicegal-server/nicegal-server.exe'
           )
