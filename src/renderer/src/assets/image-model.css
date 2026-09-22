@@ -11,10 +11,6 @@
 .image-model-picker .model-intro {
   margin: var(--space-3) 0 var(--space-6);
 }
-.image-model-picker .retired-model {
-  margin: 0 0 var(--space-4);
-  color: var(--danger);
-}
 .image-model-options {
   border: 1px solid var(--border);
 }

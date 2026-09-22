@@ -21,7 +21,6 @@ win:
   target:
     - nsis
     - zip
-    - portable
   publish:
     provider: github
     owner: centuryofimage
@@ -43,9 +42,6 @@ win:
         - "*.dll"
         - onnxruntime/**/*.dll
   sign: false
-portable:
-  artifactName: ${name}-${version}-windows-${arch}-portable.${ext}
-  unpackDirName: nicegal
 nsis:
   include: build/installer.nsh
   artifactName: ${name}-${version}-windows-${arch}-setup.${ext}

@@ -22,7 +22,7 @@
     "facebook/metaclip-2-worldwide-l14":
       "30% more image tokens than MetaCLIP2 B/16, but is very slow. 3GB download",
     "google/siglip2-base-patch16-256":
-      "Similar visual search, but prioritizes results differently.",
+      "Similar visual search, but prioritizes results differently. Same size as MetaCLIP2 B/16.",
     "deepghs/siglip_beta/smilingwolf/siglip_swinv2_base_2025_02_22_18h56m54s":
       "Specialty model trained on Danbooru tags. Good for anime and art, less useful elsewhere.",
     "facebook/dinov3-vitb16-pretrain-lvd1689m":
@@ -139,9 +139,6 @@
       Chooses how pictures are compared with example images and descriptions. It does not change OCR
       or related-text search.
     </p>
-    {#if runtime.imageModel && !runtime.imageModel.models.some((model) => model.id === runtime.imageModel?.activeModel)}
-      <p class="retired-model">A previous image model is selected. Choose one below to switch.</p>
-    {/if}
     <div class="image-model-options">
       {#each runtime.imageModel?.models ?? [] as model (model.id)}
         <div class="image-model-option" class:chosen={model.id === runtime.imageModel?.activeModel}>
