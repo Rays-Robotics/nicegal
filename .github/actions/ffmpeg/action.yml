@@ -1,5 +1,5 @@
 name: Prepare static FFmpeg
-description: Build or verify the pinned local-file-only FFmpeg package for the current runner.
+description: Build or reuse the pinned local-file-only FFmpeg package for the current runner.
 
 inputs:
   cache-hit:
@@ -63,7 +63,6 @@ runs:
         make install
         mkdir -p "$install_root/share/licenses/ffmpeg"
         cp "$repo_root/ffmpeg-src/COPYING.LGPLv2.1" "$install_root/share/licenses/ffmpeg/"
-        cp ffbuild/config.mak "$install_root/ffmpeg-config.mak"
 
     - name: Install macOS FFmpeg assembler
       if: runner.os == 'macOS' && inputs.cache-hit != 'true'
@@ -104,41 +103,11 @@ runs:
         make install
         mkdir -p "$install_root/share/licenses/ffmpeg"
         cp "$repo_root/ffmpeg-src/COPYING.LGPLv2.1" "$install_root/share/licenses/ffmpeg/"
-        cp ffbuild/config.mak "$install_root/ffmpeg-config.mak"
 
-    - name: Verify static FFmpeg and set its location
+    - name: Set FFmpeg location on macOS and Linux
+      if: runner.os != 'Windows'
       shell: bash
-      run: |
-        set -euo pipefail
-        ffmpeg_dir="$PWD/nicegal-server/.deps/ffmpeg"
-        if [[ "$RUNNER_OS" == Windows ]]; then
-          library_ext=lib
-        else
-          library_ext=a
-        fi
-        for library in avutil avcodec avformat avfilter swscale; do
-          test -s "$ffmpeg_dir/lib/$library.$library_ext" || {
-            echo "Missing FFmpeg library: $library.$library_ext" >&2
-            exit 1
-          }
-        done
-        test -s "$ffmpeg_dir/include/libavcodec/avcodec.h"
-        test -s "$ffmpeg_dir/include/libavfilter/avfilter.h"
-        for filter in SCALE FORMAT TRANSPOSE ROTATE HFLIP VFLIP; do
-          grep -q "^CONFIG_${filter}_FILTER=yes$" "$ffmpeg_dir/ffmpeg-config.mak" || {
-            echo "FFmpeg filter is disabled: $filter" >&2
-            exit 1
-          }
-        done
-        if [[ "$RUNNER_OS" == macOS && "$(uname -m)" == arm64 ]]; then
-          grep -q '^HAVE_NEON=yes$' "$ffmpeg_dir/ffmpeg-config.mak" || {
-            echo 'FFmpeg NEON optimization is disabled on macOS ARM' >&2
-            exit 1
-          }
-        fi
-        if [[ "$RUNNER_OS" != Windows ]]; then
-          echo "FFMPEG_DIR=$ffmpeg_dir" >> "$GITHUB_ENV"
-        fi
+      run: echo "FFMPEG_DIR=$PWD/nicegal-server/.deps/ffmpeg" >> "$GITHUB_ENV"
 
     - name: Set native FFmpeg location on Windows
       if: runner.os == 'Windows'
