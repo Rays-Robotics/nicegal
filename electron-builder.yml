@@ -1,0 +1,146 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/electron-userland/electron-builder/refs/heads/release/v27/packages/app-builder-lib/scheme.json
+appId: io.github.nicegal.nicegal
+productName: nicegal
+directories:
+  buildResources: build
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  grantFileProtocolExtraPrivileges: true
+  onlyLoadAppFromAsar: true
+electronLanguages:
+  - en-US
+  - en-GB
+files:
+  - out/**/*
+  - resources/**/*
+  - package.json
+win:
+  executableName: nicegal
+  artifactName: ${name}-${version}-windows-${arch}.${ext}
+  target:
+    - nsis
+    - zip
+  publish:
+    provider: github
+    owner: centuryofimage
+    repo: nicegal
+    releaseType: prerelease
+  extraResources:
+    - from: LICENSE
+      to: licenses/LICENSE
+    - from: LICENSING
+      to: licenses/LICENSING
+    - from: nicegal-server/LICENSE
+      to: licenses/nicegal-server/LICENSE
+    - from: nicegal-server/vendor/fastembed/LICENSE
+      to: licenses/nicegal-server/vendor/fastembed/LICENSE
+    - from: nicegal-server/target/release
+      to: nicegal-server
+      filter:
+        - nicegal-server.exe
+        - "*.dll"
+        - onnxruntime/**/*.dll
+  sign: false
+nsis:
+  include: build/installer.nsh
+  artifactName: ${name}-${version}-windows-${arch}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+mac:
+  target:
+    - dmg
+  category: public.app-category.photography
+  sign:
+    identity: "-"
+    hardenedRuntime: true
+    entitlements: build/entitlements.mac.plist
+    entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSPhotoLibraryUsageDescription: Application requests access to the user's photo library.
+    NSDesktopFolderUsageDescription: Application requests access to the user's Desktop folder.
+    NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    NSRemovableVolumesUsageDescription: Application requests access to removable volumes selected by the user.
+    NSNetworkVolumesUsageDescription: Application requests access to network volumes selected by the user.
+  notarize: false
+  extraResources:
+    - from: LICENSE
+      to: licenses/LICENSE
+    - from: LICENSING
+      to: licenses/LICENSING
+    - from: nicegal-server/LICENSE
+      to: licenses/nicegal-server/LICENSE
+    - from: nicegal-server/vendor/fastembed/LICENSE
+      to: licenses/nicegal-server/vendor/fastembed/LICENSE
+    - from: nicegal-server/target/release
+      to: nicegal-server
+      filter:
+        - nicegal-server
+        - onnxruntime/coreml/*.dylib
+dmg:
+  artifactName: ${name}-${version}-macos-${arch}.${ext}
+linux:
+  publish:
+    provider: github
+    owner: centuryofimage
+    repo: nicegal
+    releaseType: prerelease
+  target:
+    - AppImage
+    - deb
+  artifactName: ${name}-${version}-linux-${arch}.${ext}
+  maintainer: nicegal
+  category: Utility
+  desktop:
+    entry:
+      GenericName: Image Gallery
+      Keywords: gallery;images;photos;search;OCR;
+      StartupNotify: "true"
+  extraResources:
+    - from: LICENSE
+      to: licenses/LICENSE
+    - from: LICENSING
+      to: licenses/LICENSING
+    - from: nicegal-server/LICENSE
+      to: licenses/nicegal-server/LICENSE
+    - from: nicegal-server/vendor/fastembed/LICENSE
+      to: licenses/nicegal-server/vendor/fastembed/LICENSE
+    - from: nicegal-server/target/release
+      to: nicegal-server
+      filter:
+        - nicegal-server
+        - onnxruntime/openvino/*.so*
+        - onnxruntime/webgpu/*.so*
+  executableArgs:
+    - --ozone-platform-hint=auto
+appImage:
+  artifactName: ${name}-${version}-linux-${arch}.${ext}
+deb:
+  depends:
+    - libc6 (>= 2.39)
+    - libstdc++6
+    - libgcc-s1
+    - libssl3t64
+    - libasound2t64
+    - libgbm1
+    - libvulkan1
+    - libgtk-3-0t64
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0t64
+    - libuuid1
+    - libsecret-1-0
+nativeModules:
+  npmRebuild: false
+asar:
+  unpack:
+    - resources/**

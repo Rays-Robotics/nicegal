@@ -1,0 +1,48 @@
+name: Delete artifacts from finished runs
+
+on:
+  workflow_dispatch:
+
+# The PAT below is the same credential used by the build workflow.  The fallback
+# lets the workflow work with the repository's Actions token when it has write access.
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  delete-artifacts:
+    name: Delete artifacts from completed workflow runs
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete artifacts
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.NICEGAL_PAT || github.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRunsForRepo,
+              { owner, repo, status: 'completed', per_page: 100 },
+            );
+
+            const artifactIds = new Set();
+            for (const run of runs) {
+              const artifacts = await github.paginate(
+                github.rest.actions.listWorkflowRunArtifacts,
+                { owner, repo, run_id: run.id, per_page: 100 },
+              );
+              for (const artifact of artifacts) artifactIds.add(artifact.id);
+            }
+
+            let deleted = 0;
+            for (const artifact_id of artifactIds) {
+              try {
+                await github.rest.actions.deleteArtifact({ owner, repo, artifact_id });
+                deleted += 1;
+              } catch (error) {
+                if (error.status === 404 || error.status === 410) continue;
+                throw error;
+              }
+            }
+
+            core.notice(`Deleted ${deleted} artifact(s) from ${runs.length} completed workflow run(s).`);

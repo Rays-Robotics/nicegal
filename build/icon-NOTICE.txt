@@ -1,0 +1,29 @@
+Nicegal app icon
+
+Magnifier: Search Icon.svg by Jayprakash12345, with alignment and handle
+edits by KCVelaga, sourced from:
+https://commons.wikimedia.org/wiki/File:Search_Icon.svg
+Wikimedia identifies this simple geometric artwork as public domain.
+The magnifier's original paths, transforms, and dark-red color are preserved.
+
+The Yosho sprite was restored from the user-supplied image to a 16x16 grid
+with flat colors. The magnifier's public-domain status does not apply to
+the supplied character.
+
+build/icon.svg is the editable master. Its square viewBox crops the original
+500x500 canvas to (36,36)-(464,464), retaining approximately 4% vertical
+padding. The lens is white and the exterior transparent.
+
+The final Search Icon.svg choice supersedes the earlier Vector search
+icon.svg, Lucide, and Noto choices. Per the user's subsequent cleanup
+instruction, resources/licenses and resources/icon.png remain; only
+resources/icon-design was removed.
+
+PNG export:
+rsvg-convert -w 1024 -h 1024 -o build/icon.png build/icon.svg
+Copy build/icon.png to resources/icon.png for the running app.
+
+Windows icon export:
+magick build/icon.png -define icon:auto-resize=256,128,64,48,32,24,16 build/icon.ico
+
+The ICNS file contains PNG representations at 128, 256, 512, and 1024 pixels.

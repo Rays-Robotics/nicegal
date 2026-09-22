@@ -1,0 +1,57 @@
+import type { DividerGranularity, LayoutMode } from "./types";
+
+import { modeClamps, type DisplayClamp } from "./clamp";
+
+/** Every knob the layout engine understands. Callers pass a partial; packers get the resolved form. */
+export interface LayoutOptions {
+  mode?: LayoutMode;
+  gap?: number;
+  padding?: number;
+  /** When 'day' or 'month', a tile band never spans a bucket boundary. */
+  granularity?: DividerGranularity;
+  /** Justified: the height rows aim for before justification stretches or shrinks them. */
+  targetRowHeight?: number;
+  /** Justified: hard ceiling for a justified row. Defaults to 1.2x the target. */
+  maxRowHeight?: number;
+  /** Masonry: target column width. The real width is snapped so columns fill the viewport. */
+  columnWidth?: number;
+  /** Grid: fixed column count. 0 derives the count from `cellWidth` instead. */
+  columns?: number;
+  /** Grid: target cell width, used when `columns` is 0. */
+  cellWidth?: number;
+  /** Grid: cell width / cell height. */
+  cellAspectRatio?: number;
+  /** Overrides for the mode's display clamp. */
+  clamp?: Partial<DisplayClamp>;
+}
+
+export type ResolvedLayoutOptions = Required<Omit<LayoutOptions, "clamp">> & {
+  clamp: DisplayClamp;
+};
+
+export const layoutDefaults = {
+  mode: "justified" as LayoutMode,
+  gap: 10,
+  padding: 14,
+  granularity: "none" as DividerGranularity,
+  targetRowHeight: 148,
+  columnWidth: 200,
+  columns: 0,
+  cellWidth: 160,
+  cellAspectRatio: 1,
+};
+
+export function resolveLayoutOptions(options: LayoutOptions = {}): ResolvedLayoutOptions {
+  const merged = { ...layoutDefaults, ...stripUndefined(options) };
+  return {
+    ...merged,
+    maxRowHeight: options.maxRowHeight ?? merged.targetRowHeight * 1.2,
+    clamp: { ...modeClamps[merged.mode], ...stripUndefined(options.clamp ?? {}) },
+  };
+}
+
+function stripUndefined<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  ) as Partial<T>;
+}

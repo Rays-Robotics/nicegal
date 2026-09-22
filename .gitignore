@@ -1,0 +1,11 @@
+node_modules
+testdata/
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+.vscode
+shots/
+/resources/licenses/
+.claude/
