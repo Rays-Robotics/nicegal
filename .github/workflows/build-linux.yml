@@ -1,0 +1,95 @@
+name: Build Linux app
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+    secrets:
+      NICEGAL_PAT:
+        required: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          token: ${{ secrets.NICEGAL_PAT || github.token }}
+          persist-credentials: false
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev libclang-dev cmake libvulkan1
+
+      - name: Restore static FFmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v6
+        with:
+          path: nicegal-server/.deps/ffmpeg
+          key: ffmpeg-n9.0.1-linux-${{ hashFiles('.github/ffmpeg/posix.args', '.github/actions/ffmpeg-posix/action.yml') }}-v1
+
+      - name: Prepare static FFmpeg
+        uses: ./.github/actions/ffmpeg-posix
+        with:
+          cache-hit: ${{ steps.ffmpeg-cache.outputs.cache-hit }}
+
+      - name: Set up desktop build tools
+        uses: ./.github/actions/desktop-tools
+        with:
+          platform: linux
+
+      - name: Build nicegal-server
+        run: pnpm run build:backend
+
+      # Written into package.json rather than committed: electron-builder reads the version from
+      # there, and it is what lands in every artifact name.
+      - name: Stamp the version
+        run: npm pkg set version=${{ inputs.version }}
+
+      # Generate update metadata without uploading. The release job owns all assets so clients
+      # cannot discover a version before both platform builds and attestations are complete.
+      - name: Build and package the app
+        env:
+          NICEGAL_RELEASE_UPDATES: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && '1' || '0' }}
+        run: |
+          pnpm run build
+          pnpm exec electron-builder --linux --x64 --publish never
+
+      - name: Verify Linux update artifacts
+        shell: bash
+        run: |
+          # electron-builder uses the platform's architecture names in Linux artifact filenames.
+          for artifact in \
+            dist/latest-linux.yml \
+            dist/linux-unpacked/resources/app-update.yml \
+            'dist/nicegal-${{ inputs.version }}-linux-x86_64.AppImage' \
+            'dist/nicegal-${{ inputs.version }}-linux-amd64.deb'; do
+            if [ ! -s "$artifact" ]; then
+              echo "Missing or empty Linux release artifact: $artifact" >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-linux
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest.yml
+            dist/latest-linux.yml
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.dmg
+
