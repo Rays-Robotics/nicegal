@@ -148,6 +148,7 @@ test("index selections cross IPC intact and invalid selections are rejected", as
   for (const selection of [
     { ocr: true, image: false },
     { ocr: false, image: true },
+    { ocr: false, image: true, indexVideos: false },
   ]) {
     await start(selection);
     assert.deepEqual(requests.at(-1), {
@@ -158,5 +159,6 @@ test("index selections cross IPC intact and invalid selections are rejected", as
   await assert.rejects(start({ ocr: false, image: false }), /Select/);
   await assert.rejects(start({ ocr: "false" }), /Invalid/);
   await assert.rejects(start({ image: 1 }), /Invalid/);
-  assert.equal(requests.length, 2);
+  await assert.rejects(start({ indexVideos: "false" }), /Invalid/);
+  assert.equal(requests.length, 3);
 });

@@ -48,6 +48,8 @@ export interface GallerySettings {
   libraryIndexing: Record<string, { ocr: boolean; image: boolean }>;
   indexOcr: boolean;
   indexImage: boolean;
+  /** Include video frames in image search indexing. Videos remain in the catalog. */
+  indexVideos: boolean;
 }
 
 const defaults: GallerySettings = {
@@ -66,6 +68,7 @@ const defaults: GallerySettings = {
   libraryIndexing: {},
   indexOcr: false,
   indexImage: true,
+  indexVideos: true,
 };
 
 export const settingsDefaults: Readonly<GallerySettings> = defaults;
@@ -164,6 +167,7 @@ function loadInitial(): GallerySettings {
       ),
       indexOcr: typeof parsed.indexOcr === "boolean" ? parsed.indexOcr : true,
       indexImage: typeof parsed.indexImage === "boolean" ? parsed.indexImage : true,
+      indexVideos: typeof parsed.indexVideos === "boolean" ? parsed.indexVideos : true,
     });
   } catch {
     return defaults;

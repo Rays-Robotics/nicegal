@@ -31,6 +31,9 @@
     infoButton?.focus();
   }
   let gallery = $state<VirtualGallery>();
+  let initialVideoPlayback = $state<{ id: string; currentTime: number; muted: boolean } | null>(
+    null,
+  );
   let toolbarControls = $state<GalleryToolbar>();
   const thumbnailFailures = $derived(gallery?.getThumbnailFailures(catalog.items) ?? []);
   let settingsPage = $state<"gallery" | "search" | "about">("gallery");
@@ -60,6 +63,12 @@
     closeInfo,
     dismissView: view.dismissSelectionOrDetail,
   });
+  function openDetail(index: number): void {
+    const item = view.filteredItems[index];
+    const playback = item?.mediaKind === "video" ? gallery?.captureVideoPlayback(item.id) : null;
+    initialVideoPlayback = item && playback ? { id: item.id, ...playback } : null;
+    view.openDetail(index);
+  }
   onDestroy(() => view.dispose());
 </script>
 
@@ -87,6 +96,7 @@
           layoutOptions={view.galleryLayoutOptions}
           imagePoolSize={galleryLayoutState.imagePoolSize}
           playAnimatedPreviews={$settings.playAnimatedPreviews}
+          previewSuspended={Boolean(view.detailItem)}
           snippets={ocrSearch.displaySnippets}
           snippetQuery={ocrSearch.query}
           searchQuery={ocrSearch.query}
@@ -97,7 +107,7 @@
           onmarqueestart={view.beginGalleryMarquee}
           onmarqueechange={view.updateGalleryMarquee}
           onmarqueeend={view.endGalleryMarquee}
-          onopen={view.openDetail}
+          onopen={openDetail}
           onfilemenu={view.openFileMenu}
           onfiledrag={view.startFileDrag}
           onclear={() => view.gallerySelection.clear()}
@@ -129,14 +139,14 @@
           placement="overlay"
         />{:else if !catalog.loading && !catalog.libraryRoot}<AppMessage
           title="No library yet"
-          message="Choose a folder of images to get started."
+          message="Choose a folder of photos or videos to get started."
           placement="overlay"
           tone="neutral"
-          actionLabel="Choose image folder…"
+          actionLabel="Choose media folder…"
           onaction={view.openLibrariesDialog}
         />{:else if !catalog.loading && catalog.items.length === 0}<AppMessage
           title="The catalog is empty."
-          message="This library is empty. Add pictures to its folder, then open Libraries and enable search to scan it."
+          message="This library is empty. Add photos or videos to its folder, then reopen Nicegal to sync it."
           placement="overlay"
           tone="neutral"
           actionLabel="Open Libraries"
@@ -162,11 +172,23 @@
         {#key originalUrlOf(view.detailItem)}
           <DetailView
             item={view.detailItem}
+            initialPlayback={initialVideoPlayback?.id === view.detailItem.id
+              ? initialVideoPlayback
+              : null}
             hasPrev={view.detailIndex !== null && view.detailIndex > 0}
             hasNext={view.detailIndex !== null && view.detailIndex < view.filteredItems.length - 1}
-            onclose={view.closeDetail}
-            onprev={view.showPrevDetail}
-            onnext={view.showNextDetail}
+            onclose={() => {
+              initialVideoPlayback = null;
+              view.closeDetail();
+            }}
+            onprev={() => {
+              initialVideoPlayback = null;
+              view.showPrevDetail();
+            }}
+            onnext={() => {
+              initialVideoPlayback = null;
+              view.showNextDetail();
+            }}
             onstatuschange={(status) => (view.detailStatus = status)}
             onfilemenu={() => view.detailIndex !== null && view.openFileMenu(view.detailIndex)}
           />
@@ -230,7 +252,7 @@
     class="status-pane-toggle"
     aria-controls="metadata-panel"
     aria-pressed={infoOpen}
-    title="Show or hide photo info (I / Ctrl+I / Cmd+I)"
+    title="Show or hide file info (I / Ctrl+I / Cmd+I)"
     onclick={toggleInfo}
   >
     <PanelRight size={13} aria-hidden="true" /><span>Info</span>

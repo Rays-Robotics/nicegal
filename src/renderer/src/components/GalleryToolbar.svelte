@@ -6,6 +6,7 @@
 
   import { useApplication } from "../lib/application.svelte";
   import { errorMessage } from "../lib/errors";
+  import { parseQuery, withMediaFilter, type MediaFilter } from "../lib/search-query";
   import { settings } from "../lib/settings.svelte";
   import { addDroppedVisualFiles, chooseVisualFile } from "../lib/visual-search-input";
   import JobIndicator from "./JobIndicator.svelte";
@@ -41,6 +42,10 @@
     void addDroppedVisualFiles(ocrSearch, files).catch((error: unknown) => {
       ocrSearch.error = errorMessage(error);
     });
+  }
+  const mediaFilter = $derived(parseQuery(ocrSearch.query).media);
+  function chooseMedia(value: MediaFilter | null): void {
+    ocrSearch.query = withMediaFilter(ocrSearch.query, value);
   }
 </script>
 
@@ -79,6 +84,8 @@
     {/if}
     <ViewControls
       ranked={view.rankedView}
+      {mediaFilter}
+      onmediachange={chooseMedia}
       bind:layoutMode={$settings.layoutMode}
       bind:sortField={$settings.sortField}
       bind:dateHeaders={$settings.dateHeaders}
@@ -126,6 +133,9 @@
 {/if}
 
 <style>
+  .search-row {
+    align-items: flex-start;
+  }
   /* The tab is anchored below SearchBar's field. Reserve its physical row here, so it does not
      cover the search options immediately below the toolbar. Padding keeps the toolbar controls
      aligned to the field instead of vertically centering them in the added space. */
@@ -134,9 +144,5 @@
   }
   .search-row :global(.search-bar) {
     flex: 1;
-  }
-  .search-row > :global(.view-controls),
-  .search-row > :global(.app-toolbar-button) {
-    align-self: flex-start;
   }
 </style>

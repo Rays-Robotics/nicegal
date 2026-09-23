@@ -403,7 +403,9 @@ export class NicegalServerClient {
     try {
       while (!signal.aborted) {
         const chunk = await reader.read();
-        buffer += decoder.decode(chunk.value, { stream: !chunk.done }).replaceAll("\r\n", "\n");
+        // Normalize after appending: CR and LF may arrive in separate fetch chunks.
+        buffer += decoder.decode(chunk.value, { stream: !chunk.done });
+        buffer = buffer.replaceAll("\r\n", "\n");
         let boundary = buffer.indexOf("\n\n");
         while (boundary >= 0) {
           const block = buffer.slice(0, boundary);

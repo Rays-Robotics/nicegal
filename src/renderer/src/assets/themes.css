@@ -112,6 +112,19 @@
 }
 
 [data-theme] {
+  /* Compact video controls use a plain surface across themes. */
+  --player-screen: #101214;
+  --player-border: #111417;
+  --player-border-light: #51575b;
+  --player-bar-background: #292d30;
+  --player-text: #f1f2f2;
+  --player-track: #5c6164;
+  --player-track-border: #151719;
+  --player-progress: #d2d6d8;
+  --player-thumb: #f4f4f4;
+  --player-thumb-border: #555a5d;
+  --player-button-hover: rgb(255 255 255 / 10%);
+  --player-button-active: rgb(255 255 255 / 18%);
   --update-ready-text: var(--text-on-accent);
   --update-ready-background: var(--accent);
   --update-ready-hover: var(--accent-active);
@@ -126,4 +139,9 @@
 [data-theme] button,
 [data-theme] input {
   font: inherit;
+}
+
+[data-theme="seven-b"] {
+  --player-bar-background: #252d33;
+  --player-progress: #c8d8e2;
 }

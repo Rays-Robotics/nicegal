@@ -1,0 +1,114 @@
+name: Build macOS app
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      os:
+        required: true
+        type: string
+      platform:
+        required: true
+        type: string
+      arch:
+        required: true
+        type: string
+    secrets:
+      NICEGAL_PAT:
+        required: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          token: ${{ secrets.NICEGAL_PAT || github.token }}
+          persist-credentials: false
+
+      - name: Restore static FFmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v6
+        with:
+          path: nicegal-server/.deps/ffmpeg
+          key: ffmpeg-n9.0.1-${{ inputs.platform }}-${{ hashFiles('.github/ffmpeg/posix.args', '.github/actions/ffmpeg-posix/action.yml') }}-v1
+
+      - name: Prepare static FFmpeg
+        uses: ./.github/actions/ffmpeg-posix
+        with:
+          cache-hit: ${{ steps.ffmpeg-cache.outputs.cache-hit }}
+
+      - name: Set up desktop build tools
+        uses: ./.github/actions/desktop-tools
+        with:
+          platform: ${{ inputs.platform }}
+
+      - name: Build nicegal-server
+        run: pnpm run build:backend
+
+      # Written into package.json rather than committed: electron-builder reads the version from
+      # there, and it is what lands in every artifact name.
+      - name: Stamp the version
+        run: npm pkg set version=${{ inputs.version }}
+
+      # Generate update metadata without uploading. The release job owns all assets so clients
+      # cannot discover a version before both platform builds and attestations are complete.
+      - name: Build and package the app
+        env:
+          NICEGAL_RELEASE_UPDATES: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && '1' || '0' }}
+        run: |
+          pnpm run build
+          pnpm exec electron-builder --mac --${{ inputs.arch }} --publish never
+
+      - name: Verify macOS DMG, signing, and bundled server
+        shell: bash
+        run: |
+          case '${{ inputs.arch }}' in
+            arm64) expected_arch=arm64 ; package_arch=arm64 ; unpacked_dir=mac-arm64 ;;
+            x64) expected_arch=x86_64 ; package_arch=x64 ; unpacked_dir=mac ;;
+            *) echo 'Unexpected macOS architecture' >&2; exit 1 ;;
+          esac
+          server="dist/$unpacked_dir/nicegal.app/Contents/Resources/nicegal-server/nicegal-server"
+          runtime="dist/$unpacked_dir/nicegal.app/Contents/Resources/nicegal-server/onnxruntime/coreml/libonnxruntime.dylib"
+          for artifact in \
+            "dist/nicegal-${{ inputs.version }}-macos-$package_arch.dmg" \
+            "$server" \
+            "$runtime"; do
+            if [ ! -s "$artifact" ]; then
+              echo "Missing or empty macOS release artifact: $artifact" >&2
+              exit 1
+            fi
+          done
+          for binary in "$server" "$runtime" "dist/$unpacked_dir/nicegal.app/Contents/MacOS/nicegal"; do
+            actual_arch=$(lipo -archs "$binary")
+            if [ "$actual_arch" != "$expected_arch" ]; then
+              echo "Unexpected architecture in $binary: $actual_arch (expected $expected_arch)" >&2
+              exit 1
+            fi
+          done
+          app="dist/$unpacked_dir/nicegal.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app" 2>&1 | grep -q 'Signature=adhoc'
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-${{ inputs.platform }}
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest.yml
+            dist/latest-linux.yml
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.dmg
+

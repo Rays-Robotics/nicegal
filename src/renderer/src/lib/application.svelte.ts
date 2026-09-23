@@ -9,7 +9,6 @@ import { ONBOARDING_DISMISSED_STORAGE_KEY } from "./constants";
 import { errorMessage } from "./errors";
 import { JobOrchestrator } from "./job-orchestrator.svelte";
 import { JobTracker } from "./job-tracker.svelte";
-import { rootKey } from "./library-root";
 import { OcrSearchController } from "./ocr-search.svelte";
 import { RuntimeController } from "./runtime.svelte";
 import { libraryIndexing, settings } from "./settings.svelte";
@@ -58,7 +57,6 @@ class Application implements ApplicationContext {
 
   private started = false;
   private backendInitialized = false;
-  private manualImageIndexRoot: string | null = null;
 
   constructor() {
     const ocrSearch = new OcrSearchController();
@@ -68,11 +66,6 @@ class Application implements ApplicationContext {
       (delay) => catalog.scheduleRefresh(delay),
       () => catalog.bumpThumbnailRevision(),
       (snapshot) => {
-        if (snapshot.type === "libraryIndex" && this.manualImageIndexRoot) {
-          if (snapshot.status === "completed" && snapshot.indexStages?.image)
-            this.rememberImageIndex(this.manualImageIndexRoot);
-          this.manualImageIndexRoot = null;
-        }
         orchestrator.handleTerminalJob(snapshot);
         void runtime.refreshModels();
       },
@@ -186,74 +179,29 @@ class Application implements ApplicationContext {
     void runtime.refreshModels();
     try {
       await orchestrator.resumeInterruptedJob();
-      if (!jobs.running && !orchestrator.indexing && catalog.libraryRoot) {
-        await this.startQuickSync(catalog.libraryRoot);
-      }
+      if (!jobs.running && !orchestrator.indexing && catalog.libraryRoot)
+        await this.startCatalogSync(catalog.libraryRoot);
     } catch (error) {
       jobs.error = errorMessage(error);
     }
   }
 
-  private imageIndexKey(root: string): string {
-    return `nicegal:image-indexed:${rootKey(root)}`;
-  }
-
-  private rememberImageIndex(root: string): void {
-    try {
-      localStorage.setItem(this.imageIndexKey(root), "1");
-    } catch {
-      /* Best effort. */
-    }
-  }
-
-  private async startQuickSync(root: string): Promise<void> {
-    const { jobs, catalog } = this.services;
-    if (jobs.running) return;
-    let image = false;
-    if (libraryIndexing(get(settings), root).image) {
-      try {
-        const coverage = await window.nicegal.backend.getImageEmbeddingCoverage(root);
-        image = coverage.indexed > 0;
-      } catch {
-        // Coverage is optional for the catalog pass; skip CLIP if its history is unknown.
-      }
-      try {
-        image ||= localStorage.getItem(this.imageIndexKey(root)) === "1";
-      } catch {
-        // Coverage can still establish CLIP history when browser storage is unavailable.
-      }
-    }
-    if (jobs.running || !rootsMatch(root, catalog.libraryRoot)) return;
-    // A library added before automatic preparation may never have been indexed.
-    if (!image && libraryIndexing(get(settings), root).image) {
-      await this.syncNewLibrary(root);
-      return;
-    }
-    await this.startCatalogSync(root, { newOnly: true, image });
-  }
-
-  private async startCatalogSync(
-    root: string,
-    quick: { newOnly: true; image: boolean } | null = null,
-  ): Promise<JobSnapshot | null> {
+  private async startCatalogSync(root: string): Promise<JobSnapshot | null> {
     const { jobs } = this.services;
     if (jobs.running || !root) return null;
     const debugLimit = get(settings).debugIndexLimit;
-    return jobs.start(
-      {
-        type: "catalogSync",
-        params: {
-          root,
-          ...(quick ? { image: quick.image } : {}),
-          scan: {
-            recursive: true,
-            ...(quick ? { newOnly: true } : {}),
-            ...(debugLimit > 0 ? { debugLimit } : {}),
-          },
+    return jobs.start({
+      type: "catalogSync",
+      params: {
+        root,
+        image: libraryIndexing(get(settings), root).image,
+        indexVideos: get(settings).indexVideos,
+        scan: {
+          recursive: true,
+          ...(debugLimit > 0 ? { debugLimit } : {}),
         },
       },
-      quick !== null,
-    );
+    });
   }
 
   private async syncNewLibrary(root: string): Promise<void> {
@@ -263,9 +211,11 @@ class Application implements ApplicationContext {
       await this.startCatalogSync(root);
       return;
     }
-    this.manualImageIndexRoot = root;
-    await orchestrator.startLibraryIndex(root, false, { ocr: false, image: true });
-    if (!jobs.running && !orchestrator.indexing) this.manualImageIndexRoot = null;
+    await orchestrator.startLibraryIndex(root, false, {
+      ocr: false,
+      image: true,
+      indexVideos: get(settings).indexVideos,
+    });
   }
 
   private async startIndex(root: string, retryFailed = false): Promise<void> {
@@ -273,9 +223,11 @@ class Application implements ApplicationContext {
     if (jobs.running || orchestrator.indexing || !root) return;
     const { ocr, image } = libraryIndexing(get(settings), root);
     if (!ocr && !image) return;
-    if (image) this.manualImageIndexRoot = root;
-    await orchestrator.startLibraryIndex(root, retryFailed, { ocr, image });
-    if (!jobs.running && !orchestrator.indexing) this.manualImageIndexRoot = null;
+    await orchestrator.startLibraryIndex(root, retryFailed, {
+      ocr,
+      image,
+      indexVideos: get(settings).indexVideos,
+    });
   }
 
   private async startThumbnailBackfill(

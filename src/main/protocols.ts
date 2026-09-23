@@ -23,7 +23,13 @@ const CUSTOM_SCHEMES: CustomScheme[] = [
   },
   {
     scheme: "original",
-    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
   },
 ];
 
@@ -42,7 +48,17 @@ export function registerCustomSchemes(): void {
 export function installProtocolHandlers(services: ProtocolServices): void {
   protocol.handle(APP_SCHEME, (request) => handleAppRequest(request, services.rendererDirectory));
   protocol.handle("thumb", (request) => handleThumbnailRequest(request, services.getThumbnails));
-  protocol.handle("original", (request) => handleOriginalRequest(request, services.getCatalog));
+  // `protocol.handle` cannot expose a seekable file response in Electron yet. Let Chromium's
+  // native file handler serve the validated path so its media cache and range seeking work.
+  protocol.registerFileProtocol("original", (request, callback) => {
+    void resolveOriginalPath(request.url, services.getCatalog).then(
+      (path) => callback(path ? { path } : { error: -6 }),
+      (error: unknown) => {
+        console.error("Original-media protocol request failed", error);
+        callback({ error: -2 });
+      },
+    );
+  });
 }
 
 async function handleAppRequest(request: Request, rendererDirectory: string): Promise<Response> {
@@ -117,34 +133,29 @@ function handleThumbnailRequest(
   }
 }
 
-async function handleOriginalRequest(
-  request: Request,
+async function resolveOriginalPath(
+  requestUrl: string,
   getCatalog: () => NicegalServerClient | null,
-): Promise<Response> {
-  try {
-    const url = new URL(request.url);
-    const assetId = url.pathname.slice(1);
-    const modifiedNs = url.searchParams.get("mtime") ?? "";
-    const sourceSize = url.searchParams.get("bytes") ?? "";
-    if (
-      url.hostname !== "asset" ||
-      !/^\d+$/.test(assetId) ||
-      !/^-?\d+$/.test(modifiedNs) ||
-      !/^\d+$/.test(sourceSize)
-    ) {
-      return new Response("Invalid original-media URL", { status: 400 });
-    }
-    const reader = getCatalog();
-    if (!reader) return new Response("Catalog service is starting", { status: 503 });
-    const asset = (await reader.resolveAssets([assetId])).assets[0];
-    if (!asset || asset.modifiedNs !== modifiedNs || String(asset.sourceSize) !== sourceSize) {
-      return new Response("Original media not found", { status: 404 });
-    }
-    return net.fetch(pathToFileURL(asset.path).toString());
-  } catch (error) {
-    console.error("Original-media protocol request failed", error);
-    return new Response("Original-media request failed", { status: 500 });
+): Promise<string | null> {
+  const url = new URL(requestUrl);
+  const assetId = url.pathname.slice(1);
+  const modifiedNs = url.searchParams.get("mtime") ?? "";
+  const sourceSize = url.searchParams.get("bytes") ?? "";
+  if (
+    url.hostname !== "asset" ||
+    !/^\d+$/.test(assetId) ||
+    !/^-?\d+$/.test(modifiedNs) ||
+    !/^\d+$/.test(sourceSize)
+  ) {
+    return null;
   }
+  const reader = getCatalog();
+  if (!reader) return null;
+  const asset = (await reader.resolveAssets([assetId])).assets[0];
+  if (!asset || asset.modifiedNs !== modifiedNs || String(asset.sourceSize) !== sourceSize) {
+    return null;
+  }
+  return asset.path;
 }
 
 function notFound(): Response {

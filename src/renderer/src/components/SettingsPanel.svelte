@@ -161,6 +161,14 @@
       <SearchModels />
       <section class="settings-group advanced-settings" aria-labelledby="advanced-search-title">
         <h2 id="advanced-search-title">Advanced search settings</h2>
+        <label class="row">
+          <span class="setting-label"
+            >Index videos<small
+              >Applies to future search preparation. Videos remain in the gallery.</small
+            ></span
+          >
+          <input type="checkbox" bind:checked={$settings.indexVideos} />
+        </label>
         <div class="row segmented-row">
           <span class="setting-label"
             >Execution provider<small

@@ -1,0 +1,72 @@
+name: Prepare static FFmpeg for Windows
+description: Build or reuse the pinned static FFmpeg package for Windows.
+
+inputs:
+  cache-hit:
+    description: Whether the outer workflow restored the package cache.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout FFmpeg 9.0.1 source
+      if: inputs.cache-hit != 'true'
+      uses: actions/checkout@v7
+      with:
+        repository: FFmpeg/FFmpeg
+        ref: n9.0.1
+        path: ffmpeg-src
+        persist-credentials: false
+
+    - name: Install Windows FFmpeg build tools
+      if: inputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        & 'C:\msys64\usr\bin\pacman.exe' -S --needed --noconfirm make nasm
+        if ($LASTEXITCODE -ne 0) { throw "pacman failed with exit code $LASTEXITCODE" }
+
+    - name: Apply FFmpeg Windows NASM fix
+      if: inputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        git -C ffmpeg-src apply --check ../.github/ffmpeg/nasm-windows.patch
+        if ($LASTEXITCODE -ne 0) { throw 'FFmpeg patch does not apply.' }
+        git -C ffmpeg-src apply ../.github/ffmpeg/nasm-windows.patch
+        if ($LASTEXITCODE -ne 0) { throw 'Could not apply FFmpeg patch.' }
+
+    - name: Build static FFmpeg on Windows
+      if: inputs.cache-hit != 'true'
+      shell: C:\msys64\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}
+      env:
+        MSYS2_PATH_TYPE: inherit
+      run: |
+        repo_root="$PWD"
+        install_root="$repo_root/nicegal-server/.deps/ffmpeg"
+        build_root="$repo_root/nicegal-server/.deps/ffmpeg-build"
+        vs_bin="$(cygpath -u "$VCToolsInstallDir")/bin/Hostx64/x64"
+        export PATH="$vs_bin:/usr/bin:$PATH"
+
+        options=()
+        while IFS= read -r option || [[ -n "$option" ]]; do
+          option="${option%$'\r'}"
+          [[ -z "${option//[[:space:]]/}" || "$option" == \#* ]] && continue
+          options+=("$option")
+        done < "$repo_root/.github/ffmpeg/windows-x64.args"
+
+        mkdir -p "$build_root" "$install_root"
+        cd "$build_root"
+        "$repo_root/ffmpeg-src/configure" \
+          --prefix="$install_root" \
+          --cc=cl.exe --host-cc=cl.exe --ld=link.exe --ar=lib.exe \
+          "${options[@]}"
+        make -j "$(nproc)"
+        make install
+        mkdir -p "$install_root/share/licenses/ffmpeg"
+        cp "$repo_root/ffmpeg-src/COPYING.LGPLv2.1" "$install_root/share/licenses/ffmpeg/"
+
+    - name: Set native FFmpeg location on Windows
+      shell: pwsh
+      run: |
+        $ffmpegDir = (Resolve-Path -LiteralPath 'nicegal-server/.deps/ffmpeg').Path
+        "FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV
+        "NICEGAL_FFMPEG_DIR=$ffmpegDir" >> $env:GITHUB_ENV

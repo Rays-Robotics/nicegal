@@ -40,7 +40,7 @@ const PHASE_LABELS: Record<JobPhase, string> = {
   cataloging: "Syncing",
   thumbnails: "Thumbnails",
   ocr: "OCR",
-  imageEmbedding: "Indexing images",
+  imageEmbedding: "Indexing content",
   textEmbedding: "Indexing text",
   cleanup: "Cleanup",
   pruning: "Removing deleted files",
@@ -144,11 +144,19 @@ export function jobPhaseProgress(snapshot: JobSnapshot): PhaseProgress {
     case "cataloging":
     case "ocr":
     case "cleanup":
-    case "imageEmbedding":
     case "textEmbedding":
     case "thumbnails":
     case "pruning":
       return itemProgress(progress);
+    case "imageEmbedding": {
+      const result = itemProgress(progress);
+      const active = snapshot.activeAssetPaths?.length ?? 0;
+      // A video can spend a long time decoding and embedding samples before its one
+      // completed item is committed. Show that the worker is active in the meantime.
+      return active > 0 && progress.phaseCompleted === 0
+        ? { ...result, text: `${result.text} · processing ${active} ${active === 1 ? "file" : "files"}` }
+        : result;
+    }
     case "queued":
     case "finished":
     default:
@@ -221,6 +229,7 @@ export const PHASES_BY_TYPE: Record<JobSnapshot["type"], readonly VisiblePhase[]
   ],
   catalogSync: [
     { label: "Sync", backendPhases: ["scanning", "cataloging", "pruning"] },
+    { label: "Images", backendPhases: ["imageEmbedding"] },
     { label: "Done", backendPhases: ["finished"] },
   ],
   thumbnailGenerate: [
@@ -240,6 +249,11 @@ export const PHASES_BY_TYPE: Record<JobSnapshot["type"], readonly VisiblePhase[]
 /** Older snapshots without a selection show every indexing stage. */
 export function jobPhases(job: JobSnapshot): readonly VisiblePhase[] {
   const stages = job.indexStages;
+  if (job.type === "catalogSync") {
+    return !stages || stages.image
+      ? PHASES_BY_TYPE.catalogSync
+      : PHASES_BY_TYPE.catalogSync.filter((phase) => phase.label !== "Images");
+  }
   if (job.type !== "libraryIndex" || !stages) return PHASES_BY_TYPE[job.type];
   return PHASES_BY_TYPE.libraryIndex
     .filter(

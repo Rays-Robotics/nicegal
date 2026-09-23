@@ -54,7 +54,7 @@ export function thumbnailUrlOf(
   const physicalPixels = physicalThumbnailSize(renderedWidth, renderedHeight, devicePixelRatio);
   const query = new URLSearchParams({
     size: String(physicalPixels),
-    v: "2",
+    v: "3",
     mtime: item.modifiedNs,
     bytes: item.sourceSize,
     refresh: String(item.thumbnailRevision),

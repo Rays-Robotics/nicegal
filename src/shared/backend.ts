@@ -65,6 +65,7 @@ export interface AssetMetadata {
     sourceState: "current" | "changed" | "missing" | "unavailable";
     attributes: string[];
     exif: Array<{ label: string; value: string }>;
+    video: Array<{ label: string; value: string }>;
     error: string | null;
   };
   ocrState: "indexed" | "stale" | "notIndexed";
@@ -259,6 +260,7 @@ export interface JobSnapshot {
 export interface IndexSelection {
   ocr: boolean;
   image: boolean;
+  indexVideos?: boolean;
 }
 
 export interface LibraryIndexJobRequest {
@@ -268,6 +270,7 @@ export interface LibraryIndexJobRequest {
     /** Select text recognition and image search independently; both default to true. */
     ocr?: boolean;
     image?: boolean;
+    indexVideos?: boolean;
     /** Continue into pending CLIP-image and OCR-text embeddings after OCR (default true backend-side). */
     embed?: boolean;
     scan?: {
@@ -361,13 +364,12 @@ export interface CatalogSyncJobRequest {
     root: string;
     /** Embed newly cataloged images in this same job. */
     image?: boolean;
+    indexVideos?: boolean;
     scan?: {
       recursive?: boolean;
       exclude?: string[];
       /** Debug-only cap on discovered catalog entries. Omit to scan the complete root. */
       debugLimit?: number;
-      /** Only discover paths absent from the catalog; does not reconcile missing paths. */
-      newOnly?: boolean;
     };
   };
 }

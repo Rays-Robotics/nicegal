@@ -673,17 +673,18 @@ export class OcrSearchController {
    * `VirtualGallery` renders as happily as any other order because layout consumes the array.
    */
   apply(items: CatalogItem[]): SearchView {
-    const { scope, dates } = this.parsed;
+    const { scope, dates, media } = this.parsed;
     const body = this.searchBody;
     const dated = filterItemsByDates(items, dates);
+    const eligible = media ? dated.filter((item) => item.mediaKind === media) : dated;
     const filtering = this.query.length > 0;
     if (!body && !this.activeVisualReferences.length)
-      return { items: dated, matchTotal: dated.length, filtering };
+      return { items: eligible, matchTotal: eligible.length, filtering };
 
-    if (scope === "all") return this.applyAll(dated, filtering);
+    if (scope === "all") return this.applyAll(eligible, filtering);
 
     if (this.sortMode === "relevance" && isRankableScope(scope)) {
-      const ranked = this.rankItems(dated, scope);
+      const ranked = this.rankItems(eligible, scope);
       return {
         items: ranked,
         matchTotal: ranked.length,
@@ -691,7 +692,7 @@ export class OcrSearchController {
       };
     }
 
-    const filtered = this.filterByScope(dated, scope);
+    const filtered = this.filterByScope(eligible, scope);
     return { items: filtered, matchTotal: filtered.length, filtering };
   }
 

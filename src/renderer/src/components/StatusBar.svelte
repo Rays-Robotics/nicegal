@@ -3,13 +3,13 @@
   Gallery workspace status segments. AppShell owns the window's one physical status bar and lays
   these out left to right, divided by hairlines the way an Explorer status bar is:
 
-      [catcopy] [84 / 103 items] [provider] … [transient message] [98 / 103 indexed]
+      [catcopy] [84 / 103 items] [provider] … [transient message] [98 / 103 scanned]
 
   The item count lives here rather than inside the search field: search-bar width is scarce and
   the status bar has spare width by construction. One segment carries both readings — the library
   size at rest, matched-of-total during a search — so there is no duplicated denominator. Indexing
-  sits at the far right, where image-search coverage can use the otherwise spare space without
-  crowding stable library and selection totals.
+  sits at the far right while image-search coverage is incomplete. Once scanning catches up, that
+  segment disappears only when its eligible-image total also duplicates the library count.
 -->
 <script lang="ts">
   import type { JobSnapshot } from "../../../shared/backend";
@@ -94,23 +94,23 @@
   });
 
   const itemsText = $derived(
-    filtering
+    filtering && matchedCount !== totalCount
       ? `${matchedCount.toLocaleString()} / ${totalCount.toLocaleString()} items`
       : `${totalCount.toLocaleString()} items`,
   );
   const itemsTitle = $derived(
-    filtering
+    filtering && matchedCount !== totalCount
       ? `${matchedCount.toLocaleString()} of ${totalCount.toLocaleString()} items match the current search`
       : undefined,
   );
 
   const indexText = $derived.by(() => {
     const coverage = status?.imageCoverage;
-    if (!coverage) return "";
-    const indexed = coverage.indexed.toLocaleString();
-    return coverage.indexed === coverage.total
-      ? `${indexed} scanned`
-      : `${indexed} / ${coverage.total.toLocaleString()} scanned`;
+    if (!coverage || coverage.total === 0) return "";
+    if (coverage.indexed === coverage.total) {
+      return coverage.total === totalCount ? "" : `${coverage.indexed.toLocaleString()} scanned`;
+    }
+    return `${coverage.indexed.toLocaleString()} / ${coverage.total.toLocaleString()} scanned`;
   });
   const rateText = $derived(job ? jobRateText(job) : "");
 </script>

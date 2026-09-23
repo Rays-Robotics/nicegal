@@ -58,8 +58,8 @@
     {:else if !request}
       <p>
         {selectedCount > 1
-          ? `${selectedCount} photos selected. Select one to see its details.`
-          : "Select a photo to see its details."}
+          ? `${selectedCount} files selected. Select one to see its details.`
+          : "Select a file to see its details."}
       </p>
     {:else}
       {#await request}
@@ -92,6 +92,14 @@
               ? `${info.asset.width} × ${info.asset.height}`
               : "Unknown"}
           </dd>
+          {#if info.asset.mediaKind === "video"}
+            <dt>Duration</dt>
+            <dd>
+              {info.asset.durationMs === null
+                ? "Unknown"
+                : `${(info.asset.durationMs / 1000).toFixed(1)} s`}
+            </dd>
+          {/if}
           <dt>Created</dt>
           <dd>{date(info.asset.createdNs)}</dd>
           <dt>Modified</dt>
@@ -111,52 +119,71 @@
               : info.file.attributes.join(", ") || "None"}
           </dd>
         </dl>
+        {#if info.asset.mediaKind === "video"}
+          <h3>Video</h3>
+          {#if info.file.video.length}
+            <dl>
+              {#each info.file.video as field (field.label)}
+                <dt>{field.label}</dt>
+                <dd>{field.value}</dd>
+              {/each}
+            </dl>
+          {:else}
+            <p>Video metadata unavailable.</p>
+          {/if}
+        {/if}
         <h3>Search availability</h3>
         <dl>
-          <dt>Text recognition</dt>
-          <dd>
-            {{ indexed: "Ready", stale: "Needs update", notIndexed: "Not prepared" }[info.ocrState]}
-          </dd>
-          <dt>Text meaning</dt>
-          <dd>
-            {{
-              embedded: "Ready",
-              noText: "No text found",
-              pending: "Pending",
-              notIndexed: "Needs text recognition",
-            }[info.textState]}
-          </dd>
+          {#if info.asset.mediaKind === "image"}
+            <dt>Text recognition</dt>
+            <dd>
+              {{ indexed: "Ready", stale: "Needs update", notIndexed: "Not prepared" }[
+                info.ocrState
+              ]}
+            </dd>
+            <dt>Text meaning</dt>
+            <dd>
+              {{
+                embedded: "Ready",
+                noText: "No text found",
+                pending: "Pending",
+                notIndexed: "Needs text recognition",
+              }[info.textState]}
+            </dd>
+          {/if}
           <dt>Visual search</dt>
           <dd>{info.imageIndexed ? "Ready" : "Not prepared"}</dd>
         </dl>
-        <h3>Recognized text</h3>
-        {#if info.ocrText?.trim()}
-          <textarea
-            class="ocr-text"
-            aria-label="Recognized text"
-            readonly
-            spellcheck={false}
-            value={info.ocrText}></textarea>
-        {:else if info.ocrState === "indexed"}
-          <p>No text found in this image.</p>
-        {:else}
-          <p>Enable text recognition in Libraries to read words in this image.</p>
+        {#if info.asset.mediaKind === "image"}
+          <h3>Recognized text</h3>
+          {#if info.ocrText?.trim()}
+            <textarea
+              class="ocr-text"
+              aria-label="Recognized text"
+              readonly
+              spellcheck={false}
+              value={info.ocrText}></textarea>
+          {:else if info.ocrState === "indexed"}
+            <p>No text found in this file.</p>
+          {:else}
+            <p>Enable text recognition in Libraries to read words in this file.</p>
+          {/if}
         {/if}
         {#if info.decodeFailed}<p>
             The file could not be decoded during indexing. Use Libraries → Advanced options → Retry
             failed files after checking the file.
           </p>{/if}
-        <h3>Camera / EXIF</h3>
-        {#if info.file.exif.length}
-          <dl>
-            {#each info.file.exif as field (field.label)}<dt>{field.label}</dt>
-              <dd>{field.value}</dd>{/each}
-          </dl>
-        {:else}<p>
-            {info.file.sourceState === "current" && !info.file.error
-              ? "No camera metadata available."
-              : "Camera metadata unavailable."}
-          </p>{/if}
+        {#if info.asset.mediaKind === "image"}<h3>Camera / EXIF</h3>
+          {#if info.file.exif.length}
+            <dl>
+              {#each info.file.exif as field (field.label)}<dt>{field.label}</dt>
+                <dd>{field.value}</dd>{/each}
+            </dl>
+          {:else}<p>
+              {info.file.sourceState === "current" && !info.file.error
+                ? "No camera metadata available."
+                : "Camera metadata unavailable."}
+            </p>{/if}{/if}
         {#if info.file.error}
           <p>Some file metadata could not be read.</p>
           <details>
@@ -170,7 +197,7 @@
           </details>
         {/if}
       {:catch error}
-        <p role="alert">Could not load photo details. Refresh to try again.</p>
+        <p role="alert">Could not load file details. Refresh to try again.</p>
         <details>
           <summary>Technical details</summary>
           <pre>{errorMessage(error)}</pre>

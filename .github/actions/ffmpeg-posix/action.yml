@@ -1,0 +1,63 @@
+name: Prepare static FFmpeg for macOS and Linux
+description: Build or reuse the pinned static FFmpeg package for macOS and Linux.
+
+inputs:
+  cache-hit:
+    description: Whether the outer workflow restored the package cache.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout FFmpeg 9.0.1 source
+      if: inputs.cache-hit != 'true'
+      uses: actions/checkout@v7
+      with:
+        repository: FFmpeg/FFmpeg
+        ref: n9.0.1
+        path: ffmpeg-src
+        persist-credentials: false
+
+    - name: Install FFmpeg assembler
+      if: inputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        if [[ "$RUNNER_OS" == macOS ]]; then
+          brew install nasm
+        else
+          sudo apt-get install -y nasm
+        fi
+
+    - name: Build static FFmpeg on macOS and Linux
+      if: inputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        repo_root="$PWD"
+        install_root="$repo_root/nicegal-server/.deps/ffmpeg"
+        build_root="$repo_root/nicegal-server/.deps/ffmpeg-build"
+        options=()
+        while IFS= read -r option || [[ -n "$option" ]]; do
+          [[ -z "${option//[[:space:]]/}" || "$option" == \#* ]] && continue
+          options+=("$option")
+        done < "$repo_root/.github/ffmpeg/posix.args"
+        if [[ "$RUNNER_OS" == macOS && "$(uname -m)" == arm64 ]]; then
+          options+=(--enable-neon)
+        fi
+
+        mkdir -p "$build_root" "$install_root"
+        cd "$build_root"
+        "$repo_root/ffmpeg-src/configure" --prefix="$install_root" "${options[@]}"
+        if [[ "$RUNNER_OS" == macOS ]]; then
+          jobs="$(sysctl -n hw.ncpu)"
+        else
+          jobs="$(nproc)"
+        fi
+        make -j "$jobs"
+        make install
+        mkdir -p "$install_root/share/licenses/ffmpeg"
+        cp "$repo_root/ffmpeg-src/COPYING.LGPLv2.1" "$install_root/share/licenses/ffmpeg/"
+
+    - name: Set FFmpeg location on macOS and Linux
+      shell: bash
+      run: echo "FFMPEG_DIR=$PWD/nicegal-server/.deps/ffmpeg" >> "$GITHUB_ENV"

@@ -1,0 +1,49 @@
+name: Set up desktop build tools
+description: Set up Rust, uv, Node, pnpm, and the electron-builder cache.
+
+inputs:
+  platform:
+    description: Desktop platform identifier, including macos-intel when applicable.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The Rust workspace lives in the nicegal-server submodule.
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        rust-src-dir: nicegal-server
+
+    # Backend build scripts use uv for the provider-specific ONNX Runtime environment.
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v10.0.1
+      with:
+        enable-cache: true
+
+    - name: Setup Node
+      uses: actions/setup-node@v7
+      with:
+        node-version: 24
+
+    - name: Setup pnpm
+      if: inputs.platform != 'macos-intel'
+      uses: pnpm/setup@v2.1.0
+      with:
+        version: 11.27.1
+        cache: true
+
+    # pnpm/setup currently fails on Intel macOS runners.
+    - name: Setup pnpm on Intel macOS
+      if: inputs.platform == 'macos-intel'
+      shell: bash
+      run: |
+        npm install -g pnpm@11.27.1
+        echo "PATH=$HOME/.local/share/pnpm:$PATH" >> "$GITHUB_ENV"
+        pnpm ci
+
+    - name: Restore electron-builder cache
+      uses: actions/cache@v6
+      with:
+        key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        path: ${{ runner.os == 'Windows' && '~\AppData\Local\electron-builder\Cache' || '~/.cache/electron-builder' }}

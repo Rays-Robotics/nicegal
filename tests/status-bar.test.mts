@@ -33,15 +33,17 @@ function statusMarkup(
   indexRate: number | null,
   indexingRunning = true,
   phase: JobSnapshot["phase"] = "imageEmbedding",
+  matchedCount = 100,
+  filtering = false,
 ): string {
   return render(StatusBar, {
     props: {
       libraryName: "Library",
       libraryRoot: "library",
       hasLibrary: true,
-      matchedCount: 100,
+      matchedCount,
       totalCount: 100,
-      filtering: false,
+      filtering,
       searching: false,
       selectedCount: 0,
       status,
@@ -58,6 +60,15 @@ function statusMarkup(
     },
   }).body;
 }
+
+test("item count omits a redundant matches fraction when every item matches", () => {
+  const allMatch = statusMarkup(undefined, null, false, "imageEmbedding", 100, true);
+  assert.match(allMatch, />100 items</);
+  assert.doesNotMatch(allMatch, /100 \/ 100 items/);
+
+  const narrowed = statusMarkup(undefined, null, false, "imageEmbedding", 84, true);
+  assert.match(narrowed, /84 \/ 100 items/);
+});
 
 test("throughput remains visible when image coverage is unknown", () => {
   for (const status of [
@@ -95,16 +106,28 @@ test("image coverage is independent of OCR and uses the image denominator", () =
   assert.doesNotMatch(html, /index-status[^>]*title=|images\/s|with text/);
 });
 
-test("complete image coverage collapses to one number, including zero", () => {
-  for (const count of [0, 80]) {
-    const html = statusMarkup(
-      { ...empty, imageCoverage: { indexed: count, total: count } },
-      null,
-      false,
-    );
-    assert.match(html, new RegExp(`>${count} scanned<`));
-    assert.doesNotMatch(html, /index-status[^>]*title=/);
-  }
+test("complete image coverage is omitted only when it duplicates the library count", () => {
+  const duplicate = statusMarkup(
+    { ...empty, imageCoverage: { indexed: 100, total: 100 } },
+    null,
+    false,
+  );
+  assert.doesNotMatch(duplicate, /index-status|scanned/);
+
+  const eligibleSubset = statusMarkup(
+    { ...empty, imageCoverage: { indexed: 80, total: 80 } },
+    null,
+    false,
+  );
+  assert.match(eligibleSubset, />80 scanned</);
+
+  const noEligibleItems = statusMarkup(
+    { ...empty, imageCoverage: { indexed: 0, total: 0 } },
+    null,
+    false,
+  );
+  assert.doesNotMatch(noEligibleItems, /index-status|scanned/);
+
   assert.match(
     statusMarkup({ ...empty, imageCoverage: { indexed: 0, total: 80 } }, null),
     /0 \/ 80 scanned/,

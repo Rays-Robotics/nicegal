@@ -3,7 +3,22 @@ import { test } from "node:test";
 
 import type { JobSnapshot } from "../src/shared/backend.ts";
 
-import { jobPhases, jobRateText } from "../src/renderer/src/lib/job-format.ts";
+import { jobPhaseProgress, jobPhases, jobRateText } from "../src/renderer/src/lib/job-format.ts";
+
+test("video embedding shows active work before its first asset is committed", () => {
+  const job = {
+    status: "running",
+    phase: "imageEmbedding",
+    activeAssetPaths: ["C:/gallery/movie.mp4"],
+    progress: { phaseCompleted: 0, total: 2 },
+  } as JobSnapshot;
+  assert.deepEqual(jobPhaseProgress(job), {
+    text: "0 / 2 · processing 1 file",
+    ratio: 0,
+  });
+  job.progress.phaseCompleted = 1;
+  assert.equal(jobPhaseProgress(job).text, "1 / 2");
+});
 
 test("cataloging and indexing show valid backend phase rates, including zero", () => {
   for (const phase of [
@@ -53,4 +68,14 @@ test("progress shows images before OCR and keeps image-only pruning in Images", 
     jobPhases(job).map((p) => p.label),
     ["Sync", "Images", "OCR", "Text", "Done"],
   );
+});
+
+test("catalog sync includes an Images phase only when it indexes images", () => {
+  const job = {
+    type: "catalogSync",
+    indexStages: { ocr: false, image: true, text: false },
+  } as JobSnapshot;
+  assert.deepEqual(jobPhases(job).map((phase) => phase.label), ["Sync", "Images", "Done"]);
+  job.indexStages!.image = false;
+  assert.deepEqual(jobPhases(job).map((phase) => phase.label), ["Sync", "Done"]);
 });

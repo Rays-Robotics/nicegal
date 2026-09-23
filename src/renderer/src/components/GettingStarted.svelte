@@ -8,7 +8,7 @@
 <div class="welcome-splash">
   <h1 id="welcome-splash-title">Welcome to Nicegal</h1>
   <p id="welcome-splash-description">
-    Browse picture folders and find images by name, text, or appearance.
+    Browse photo and video folders and find files by name, text, or appearance.
   </p>
   <ol class="themed-scrollbar">
     <li>
@@ -17,7 +17,7 @@
         >Choose <b>Add a folder</b> below, or in <b>Libraries</b>. Your files stay where they are.</span
       >
       <span
-        >Image search is set up automatically. The first run downloads a search model; your photos
+        >Visual search is set up automatically. The first run downloads a search model; your files
         stay on your computer.</span
       >
       <span>For words inside pictures, enable <b>text recognition</b> in Libraries.</span>
@@ -35,7 +35,7 @@
           <p>Use the search menu, or type a prefix:</p>
           <ul class="search-types">
             <li>
-              <b>Visual search</b> (<code>like:</code>) — Describe a picture or use an image
+              <b>Visual search</b> (<code>like:</code>) — Describe a photo or video or use an image
               example.
             </li>
             <li>
@@ -60,7 +60,7 @@
     <li>
       <strong>Build a visual search</strong>
       <span
-        >Right-click a photo: <b>Find similar images</b> starts a search;
+        >Right-click a file: <b>Find similar images</b> starts a search;
         <b>Add to visual search</b> adds another example.</span
       >
       <figure>

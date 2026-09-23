@@ -195,10 +195,11 @@
   );
   const ScopeIcon = $derived(selectedScope.icon);
   /**
-   * Empty scoped searches show their syntax hints; All uses the regular placeholder.
+   * Empty scoped fields show their syntax hints; filters are visible input, even when the
+   * searchable body is empty. All uses the regular placeholder.
    */
   const scopeHint = $derived.by(() => {
-    if (parsed.scope === "all" || parsed.body.trim()) return "";
+    if (parsed.scope === "all" || inputValue.trim()) return "";
     const reference = visualReferences[0];
     const text =
       parsed.scope === "like" && reference
@@ -301,8 +302,11 @@
   /** The composer owns only the visual expression. Date terms remain part of the app-wide search
    * grammar and stay in the text box, so changing a visual term cannot silently widen a date. */
   function setVisualExpression(expression: string): void {
-    const dates = parsed.dates.map((date) => date.raw).join(" ");
-    value = `like:${expression ? ` ${expression}` : ""}${dates ? ` ${dates}` : ""}`;
+    const filters = parsed.tokens
+      .filter((token) => token.kind === "date" || token.kind === "media")
+      .map((token) => token.raw)
+      .join(" ");
+    value = `like:${expression ? ` ${expression}` : ""}${filters ? ` ${filters}` : ""}`;
   }
 
   function dropVisualFiles(event: DragEvent): void {
@@ -381,7 +385,7 @@
       <!-- The hint rides a data attribute and a ::after rather than a trailing element: the
            backdrop is `white-space: pre`, so any markup added here prints its own indentation. -->
       <div class="input-backdrop" bind:this={backdropEl} data-hint={scopeHint} aria-hidden="true">
-        {#each inputTokens as token (token)}{#if token.kind === "scope" || token.kind === "date"}<span
+        {#each inputTokens as token (token)}{#if token.kind === "scope" || token.kind === "date" || token.kind === "media"}<span
               class:token-invalid={token.kind === "date" && !token.valid}
               class="token">{token.raw}</span
             >{:else}{token.raw}{/if}{/each}

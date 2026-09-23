@@ -8,6 +8,7 @@
  */
 export type SearchScope = "all" | "name" | "ocr" | "meaning" | "like";
 export type TemporalOperator = "before" | "after" | "during";
+export type MediaFilter = "image" | "video";
 
 /**
  * How an `ocr:` body should be executed against the backend's text modes:
@@ -33,6 +34,7 @@ export type DateFilter =
 
 export type QueryToken =
   | { kind: "scope"; scope: Exclude<SearchScope, "all">; raw: string }
+  | { kind: "media"; media: MediaFilter; raw: string }
   | DateFilter
   | { kind: "text"; raw: string };
 
@@ -40,12 +42,14 @@ export type ParsedQuery = {
   scope: SearchScope;
   body: string;
   dates: DateFilter[];
+  media: MediaFilter | null;
   tokens: QueryToken[];
   ocrMode: OcrMode;
 };
 
 const scopePattern = /^(name|filename|ocr|meaning|like):/i;
 const temporalPattern = /^(before|after|during):(.*)$/i;
+const mediaPattern = /^type:(image|video)$/i;
 const dateValuePattern = /^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/;
 
 type DateBounds = { from: string; to: string };
@@ -55,6 +59,7 @@ export function parseQuery(raw: string): ParsedQuery {
   const tokens: QueryToken[] = [];
   let scope: SearchScope = "all";
   const dates: DateFilter[] = [];
+  let media: MediaFilter | null = null;
   let firstToken = true;
 
   for (const part of parts) {
@@ -85,6 +90,13 @@ export function parseQuery(raw: string): ParsedQuery {
       continue;
     }
 
+    const mediaMatch = part.match(mediaPattern);
+    if (mediaMatch) {
+      media = mediaMatch[1].toLowerCase() as MediaFilter;
+      tokens.push({ kind: "media", media, raw: part });
+      continue;
+    }
+
     tokens.push({ kind: "text", raw: part });
   }
 
@@ -97,6 +109,7 @@ export function parseQuery(raw: string): ParsedQuery {
     scope,
     body,
     dates,
+    media,
     tokens,
     ocrMode: detectOcrMode(body),
   };
@@ -160,6 +173,15 @@ export function withScope(raw: string, scope: SearchScope): string {
 
   if (scope === "all") return body;
   return body ? `${scope}: ${body}` : `${scope}:`;
+}
+
+export function withMediaFilter(raw: string, media: MediaFilter | null): string {
+  const body = parseQuery(raw)
+    .tokens.filter((token) => token.kind !== "media")
+    .map((token) => token.raw)
+    .join("")
+    .trim();
+  return media ? `${body}${body ? " " : ""}type:${media}` : body;
 }
 
 function parseDateToken(raw: string, operator: TemporalOperator, value: string): DateFilter {

@@ -9,3 +9,4 @@ out
 shots/
 /resources/licenses/
 .claude/
+agent-browser.json

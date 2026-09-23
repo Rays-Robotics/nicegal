@@ -11,7 +11,7 @@ const EMPTY_SNIPPET_TERMS: readonly string[] = [];
 
 export type { SnippetSegment };
 
-/** A pooled `<img>`: a stable DOM slot plus whatever geometry/source it currently shows. */
+/** A pooled media tile: a stable DOM slot plus its geometry and source. */
 export type PoolTile = GalleryPosition & {
   slot: number;
   itemId: string;
@@ -21,6 +21,7 @@ export type PoolTile = GalleryPosition & {
   naturalWidth: number;
   naturalHeight: number;
   mediaKind: "image" | "video";
+  durationMs: number | null;
   animated: boolean;
   /** Filename or OCR/vector snippet for the active search, looked up while assigning a slot. */
   snippet?: string;
@@ -141,6 +142,7 @@ export function recyclePool({
       naturalWidth: item.sourceWidth ?? 0,
       naturalHeight: item.sourceHeight ?? 0,
       mediaKind: item.mediaKind,
+      durationMs: item.durationMs,
       animated: item.animated,
       sourceSize: item.sourceSize,
       originalSrc: originalUrlOf(item),

@@ -1,8 +1,8 @@
 import type { PoolTile } from "./tile-pool";
 
 /**
- * Decides which visible tiles get to swap their static thumbnail for the real animated GIF or a
- * lazily-attached muted `<video>` preview. Kept separate from `tile-pool.ts` (which only knows
+ * Decides which visible animated-image tiles get to swap their static thumbnail for the original.
+ * Kept separate from `tile-pool.ts` (which only knows
  * about geometry/DOM-slot recycling) because promotion depends on signals the pool doesn't see:
  * scroll-idle state, hover, and distance from the viewport center. Promotion is disabled while
  * scrolling or when animations are disabled, and candidates are bounded by source size and a
@@ -35,7 +35,7 @@ export interface PromotionInput {
 function isCandidate(tile: PoolTile, failedIds: ReadonlySet<string>): boolean {
   if (failedIds.has(tile.itemId)) return false;
   if (Number(tile.sourceSize) > MAX_PROMOTABLE_SOURCE_BYTES) return false;
-  return tile.mediaKind === "video" || tile.animated;
+  return tile.mediaKind === "image" && tile.animated;
 }
 
 /** Recomputes which item ids should be promoted right now. Pure — call it, don't mutate state in it. */

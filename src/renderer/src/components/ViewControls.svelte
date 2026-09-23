@@ -8,6 +8,7 @@
 
   import type { Timeline } from "../../../shared/backend";
   import type { DividerGranularity, LayoutMode } from "../lib/gallery/types";
+  import type { MediaFilter } from "../lib/search-query";
 
   import { popoverDismiss } from "../lib/popover-dismiss";
   import { settings, settingsLimits } from "../lib/settings.svelte";
@@ -17,11 +18,15 @@
     sortField = $bindable(),
     dateHeaders = $bindable(),
     ranked = false,
+    mediaFilter = null,
+    onmediachange = () => {},
   }: {
     layoutMode: LayoutMode;
     sortField: Timeline;
     dateHeaders: DividerGranularity;
     ranked?: boolean;
+    mediaFilter?: MediaFilter | null;
+    onmediachange?: (media: MediaFilter | null) => void;
   } = $props();
   type LayoutOption = {
     value: LayoutMode;
@@ -53,6 +58,11 @@
     { value: "none", label: "None" },
     { value: "day", label: "Day" },
     { value: "month", label: "Month" },
+  ];
+  const mediaOptions: readonly { value: MediaFilter | null; label: string }[] = [
+    { value: null, label: "All" },
+    { value: "image", label: "Images" },
+    { value: "video", label: "Videos" },
   ];
   let openMenu = $state(false);
   const sizeKey = $derived(
@@ -101,7 +111,25 @@
   </div>
 {/snippet}
 {#snippet organizationChoices()}
-  <div class="organization-menu" aria-label="Date organization">
+  <div class="organization-menu" aria-label="Media and date organization">
+    <div class="organization-group" role="radiogroup" aria-label="Show media">
+      <h3>Show media</h3>
+      <div class="choice-row">
+        {#each mediaOptions as option (option.label)}
+          <button
+            type="button"
+            role="radio"
+            aria-label={option.label}
+            aria-checked={mediaFilter === option.value}
+            onclick={() => onmediachange(option.value)}
+          >
+            <span class="choice-mark" aria-hidden="true"
+              >{#if mediaFilter === option.value}<Check size={12} />{/if}</span
+            >{option.label}
+          </button>
+        {/each}
+      </div>
+    </div>
     {#if ranked}<p>Date options apply when sorting by Date.</p>{/if}
     <div class="organization-group" role="radiogroup" aria-label="Sort by">
       <h3>Sort by</h3>
@@ -162,7 +190,12 @@
 <div class="view-controls" {@attach popoverDismiss(openMenu, () => (openMenu = false))}>
   <div class="toolbar-size">{@render imageSize(true)}</div>
   <button
-    class={["app-toolbar-button", "app-toolbar-text-button", openMenu && "selected"]}
+    class={[
+      "app-toolbar-button",
+      "app-toolbar-text-button",
+      openMenu && "selected",
+      mediaFilter && "active",
+    ]}
     type="button"
     aria-haspopup="dialog"
     aria-expanded={openMenu}

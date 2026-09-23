@@ -456,10 +456,10 @@ function validateJobRequest(value: unknown): JobRequest {
   if (request.type === "libraryIndex") {
     const params = requireJobParams(
       value,
-      ["root", "embed", "ocr", "image", "scan"],
+      ["root", "embed", "ocr", "image", "indexVideos", "scan"],
       "Invalid library index job",
     );
-    for (const key of ["embed", "ocr", "image"] as const) {
+    for (const key of ["embed", "ocr", "image", "indexVideos"] as const) {
       if (params[key] !== undefined && typeof params[key] !== "boolean") {
         throw new TypeError("Invalid index job");
       }
@@ -476,6 +476,7 @@ function validateJobRequest(value: unknown): JobRequest {
         ...(params.embed === undefined ? {} : { embed: params.embed as boolean }),
         ...(params.ocr === undefined ? {} : { ocr: params.ocr as boolean }),
         ...(params.image === undefined ? {} : { image: params.image as boolean }),
+        ...(params.indexVideos === undefined ? {} : { indexVideos: params.indexVideos as boolean }),
         ...(scan === undefined ? {} : { scan }),
       },
     };
@@ -496,10 +497,15 @@ function validateJobRequest(value: unknown): JobRequest {
     };
   }
   if (request.type === "catalogSync") {
-    const params = requireJobParams(value, ["root", "scan", "image"], "Invalid catalog sync job");
+    const params = requireJobParams(
+      value,
+      ["root", "scan", "image", "indexVideos"],
+      "Invalid catalog sync job",
+    );
     if (
       (params.scan !== undefined && !isCatalogSyncScan(params.scan)) ||
-      (params.image !== undefined && typeof params.image !== "boolean")
+      (params.image !== undefined && typeof params.image !== "boolean") ||
+      (params.indexVideos !== undefined && typeof params.indexVideos !== "boolean")
     ) {
       throw new TypeError("Invalid catalog sync job");
     }
@@ -508,6 +514,7 @@ function validateJobRequest(value: unknown): JobRequest {
       params: {
         root: validateAbsoluteRoot(params.root),
         ...(params.image === undefined ? {} : { image: params.image as boolean }),
+        ...(params.indexVideos === undefined ? {} : { indexVideos: params.indexVideos as boolean }),
         ...(params.scan === undefined ? {} : { scan: params.scan }),
       },
     };
@@ -561,11 +568,10 @@ function hasOnlyFields(value: Record<string, unknown>, fields: readonly string[]
 function isCatalogSyncScan(
   value: unknown,
 ): value is NonNullable<CatalogSyncJobRequest["params"]["scan"]> {
-  if (!isRecord(value) || !hasOnlyFields(value, ["recursive", "exclude", "debugLimit", "newOnly"]))
+  if (!isRecord(value) || !hasOnlyFields(value, ["recursive", "exclude", "debugLimit"]))
     return false;
   return (
     (value.recursive === undefined || typeof value.recursive === "boolean") &&
-    (value.newOnly === undefined || typeof value.newOnly === "boolean") &&
     (value.exclude === undefined ||
       (Array.isArray(value.exclude) &&
         value.exclude.every((pattern) => typeof pattern === "string"))) &&

@@ -312,6 +312,7 @@ export class JobOrchestrator {
         {
           ocr: pending.params.ocr ?? true,
           image: pending.params.image ?? pending.params.embed ?? true,
+          indexVideos: pending.params.indexVideos ?? true,
         },
       );
     else await this.startResumableJob(pending.params.root, pending);

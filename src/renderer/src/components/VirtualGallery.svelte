@@ -1,6 +1,6 @@
 <!--
   @component
-  A virtualized, recycled-DOM image grid. Renders only what's near the viewport no matter how
+  A virtualized, recycled-DOM media grid. Renders only what's near the viewport no matter how
   large `items` is, by keeping a small, fixed pool of `<img>` elements and reassigning what each
   one points at as the user scrolls, instead of mounting one element per item.
 
@@ -83,6 +83,7 @@
      * always wins when the OS expresses a preference. Animated media is promoted only for eligible
      * pooled tiles, after scrolling settles, subject to the concurrency and source-size limits. */
     playAnimatedPreviews = true,
+    previewSuspended = false,
     /** Filename/OCR-text snippets for the current search, by item id. A tile with an entry shows an
      * iBooks-style caption strip over its bottom edge so the user can see *why* it matched. */
     snippets,
@@ -123,6 +124,7 @@
     imageDecoding?: "sync" | "async" | "auto";
     pixelatedBelow?: number;
     playAnimatedPreviews?: boolean;
+    previewSuspended?: boolean;
     snippets?: ReadonlyMap<string, string>;
     snippetQuery?: string;
     searchQuery?: string;
@@ -172,10 +174,11 @@
   const viewOffsets = new SvelteMap<string, { top: number; anchor: typeof anchor }>();
   let tiles = $state.raw<PoolTile[]>([]);
 
-  // Animated GIF/video promotion (see lib/gallery/media-policy.ts): which pooled tiles currently
-  // show their real original source instead of a static thumbnail poster.
+  // Animated-image promotion. Video previews are attached only for the hovered tile.
   const media = new GalleryMediaLifecycle();
-  const animationsEnabled = $derived(playAnimatedPreviews && !media.reducedMotion);
+  const animationsEnabled = $derived(
+    playAnimatedPreviews && !media.reducedMotion && !previewSuspended,
+  );
   const promotedIds = $derived(
     selectPromotedIds({
       tiles,
@@ -187,6 +190,38 @@
       failedIds: media.failedOriginalIds,
     }),
   );
+  const previewVideoId = $derived(
+    animationsEnabled &&
+      media.scrollIdle &&
+      media.hoveredId &&
+      tiles.some(
+        (tile) =>
+          tile.itemId === media.hoveredId &&
+          tile.mediaKind === "video" &&
+          tile.y + tile.height >= scrollTop &&
+          tile.y <= scrollTop + viewportHeight,
+      ) &&
+      !media.failedOriginalIds.has(media.hoveredId)
+      ? media.hoveredId
+      : null,
+  );
+  let previewMuted = $state(true);
+  let previewVideo: HTMLVideoElement | null = null;
+
+  export function captureVideoPlayback(id: string): { currentTime: number; muted: boolean } | null {
+    if (previewVideoId !== id || !previewVideo) return null;
+    const playback = { currentTime: previewVideo.currentTime, muted: previewVideo.muted };
+    media.hoveredId = null;
+    previewMuted = true;
+    return playback;
+  }
+
+  function attachPreview(video: HTMLVideoElement): () => void {
+    previewVideo = video;
+    return () => {
+      if (previewVideo === video) previewVideo = null;
+    };
+  }
   /** Snapshot of the last-logged promoted set, purely for the debug-log diff below. */
   let loggedPromotedIds = new Set<string>();
 
@@ -278,7 +313,6 @@
   }
 
   function onPosterError(tile: PoolTile): void {
-    if (tile.mediaKind !== "image") return;
     const queued = thumbnailScheduler.enqueue({
       assetId: tile.itemId,
       width: tile.width,
@@ -333,7 +367,10 @@
     // destination for the first pool pass so the intermediate position requests no thumbnails.
     const top =
       pooledLayout !== currentLayout
-        ? (anchorScrollTop(currentLayout, untrack(() => anchor)) ?? scrollTop)
+        ? (anchorScrollTop(
+            currentLayout,
+            untrack(() => anchor),
+          ) ?? scrollTop)
         : scrollTop;
     pooledLayout = currentLayout;
     updatePool(currentLayout, viewportHeight, top, overscan, imagePoolSize);
@@ -485,11 +522,22 @@
   }
 
   function onTileEnter(tile: PoolTile): void {
+    if (tile.mediaKind === "video") previewMuted = true;
     media.hoveredId = tile.itemId;
   }
 
   function onTileLeave(tile: PoolTile): void {
     if (media.hoveredId === tile.itemId) media.hoveredId = null;
+  }
+
+  function videoDuration(durationMs: number | null): string {
+    if (durationMs === null) return "";
+    const seconds = Math.floor(durationMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainder = String(seconds % 60).padStart(2, "0");
+    return minutes >= 60
+      ? `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}:${remainder}`
+      : `${minutes}:${remainder}`;
   }
 
   /** Literal body terms worth highlighting in a caption. `parseQuery` removes the scope prefix
@@ -660,6 +708,8 @@
   <div class="gallery-canvas" style:height={`${layout.height}px`}>
     {#each tiles as tile (tile.slot)}
       {@const promoted = promotedIds.has(tile.itemId)}
+      {@const showingOriginal = tile.mediaKind === "image" && tile.animated && promoted}
+      {@const currentSrc = showingOriginal ? tile.originalSrc : posterSrc(tile)}
       <div
         class={{
           "gallery-frame": true,
@@ -671,7 +721,7 @@
           ? `${tile.alt}\n${tile.snippet}`
           : tile.alt}
         aria-label={thumbnailFailures.has(tile.itemId)
-          ? `${tile.alt}: thumbnail unavailable. Open image`
+          ? `${tile.alt}: thumbnail unavailable. Open ${tile.mediaKind}`
           : tile.alt}
         style={tileStyle(tile)}
         role="button"
@@ -684,39 +734,49 @@
         onmouseenter={() => onTileEnter(tile)}
         onmouseleave={() => onTileLeave(tile)}
       >
-        {#if tile.mediaKind === "video" && promoted}
-          <video
-            class="gallery-tile"
-            src={tile.originalSrc}
-            width={tile.naturalWidth || tile.width}
-            height={tile.naturalHeight || tile.height}
-            muted
-            loop
-            playsinline
-            autoplay
-            onerror={() => media.onOriginalError(tile)}
-          ></video>
-        {:else}
-          {@const showingOriginal = tile.animated && promoted}
-          {@const currentSrc = showingOriginal ? tile.originalSrc : posterSrc(tile)}
-          <img
-            class="gallery-tile"
-            src={currentSrc}
-            alt={tile.alt}
-            decoding={imageDecoding}
-            width={tile.naturalWidth || tile.width}
-            height={tile.naturalHeight || tile.height}
-            onerror={() => (showingOriginal ? media.onOriginalError(tile) : onPosterError(tile))}
-            onload={() => {
-              if (!showingOriginal) onPosterLoad(tile);
-            }}
-            use:tileImage={currentSrc}
-          />
-          {#if tile.mediaKind === "video"}
-            <span class="media-badge" title="Video"><Video size={11} aria-hidden="true" /></span>
-          {:else if tile.animated && !promoted}
-            <span class="media-badge">GIF</span>
+        <img
+          class="gallery-tile"
+          src={currentSrc}
+          alt={tile.alt}
+          decoding={imageDecoding}
+          width={tile.naturalWidth || tile.width}
+          height={tile.naturalHeight || tile.height}
+          onerror={() => (showingOriginal ? media.onOriginalError(tile) : onPosterError(tile))}
+          onload={() => {
+            if (!showingOriginal) onPosterLoad(tile);
+          }}
+          use:tileImage={currentSrc}
+        />
+        {#if tile.mediaKind === "video"}
+          {#if previewVideoId === tile.itemId}
+            <video
+              class="gallery-tile video-preview"
+              src={tile.originalSrc}
+              muted={previewMuted}
+              loop
+              playsinline
+              autoplay
+              onerror={() => media.onOriginalError(tile)}
+              {@attach attachPreview}
+            ></video>
+            <button
+              class="preview-audio"
+              type="button"
+              title={previewMuted ? "Unmute preview" : "Mute preview"}
+              aria-label={previewMuted ? "Unmute preview" : "Mute preview"}
+              onclick={(event) => {
+                event.stopPropagation();
+                previewMuted = !previewMuted;
+              }}
+              onkeydown={(event) => event.stopPropagation()}
+              >{previewMuted ? "Unmute" : "Mute"}</button
+            >
           {/if}
+          <span class="media-badge" title="Video"
+            ><Video size={11} aria-hidden="true" />{videoDuration(tile.durationMs)}</span
+          >
+        {:else if tile.animated && !promoted}
+          <span class="media-badge">GIF</span>
         {/if}
         {#if thumbnailFailures.has(tile.itemId)}
           <span class="thumbnail-failed">Thumbnail unavailable</span>
@@ -919,6 +979,26 @@
     visibility: visible;
   }
 
+  .video-preview {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .preview-audio {
+    position: absolute;
+    z-index: 2;
+    top: var(--space-4);
+    right: var(--space-4);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-caption);
+    color: var(--text-primary);
+    cursor: pointer;
+    font: inherit;
+  }
+
   /* Small sources fill their tile like any other, but with nearest-neighbour scaling: bilinear
      turns sprites and icons to mush at these enlargement factors. */
   .gallery-frame.is-pixelated .gallery-tile {
@@ -952,15 +1032,14 @@
     padding: 0 1px;
   }
 
-  /* Marks a tile as video/animated when it is showing its static poster (or, for video today, no
-     poster at all — see DEFERRED_WORK.md) rather than actively playing, so it never reads as a
-     plain broken image. */
+  /* Marks video and animated image tiles while their posters are visible. */
   .media-badge {
     position: absolute;
     right: calc(var(--space-2) + var(--space-2));
     bottom: calc(var(--space-2) + var(--space-2));
     display: inline-flex;
     align-items: center;
+    gap: var(--space-2);
     height: var(--space-14);
     padding: 0 var(--space-4);
     border-radius: var(--radius-sm);

@@ -17,6 +17,53 @@ after(() => vite.close());
 const { OcrSearchController } = (await vite.ssrLoadModule(
   "/src/renderer/src/lib/ocr-search.svelte.ts",
 )) as { OcrSearchController: typeof Controller };
+const { parseQuery, withMediaFilter, withScope } = await vite.ssrLoadModule(
+  "/src/renderer/src/lib/search-query.ts",
+);
+
+test("media operators compose with scopes, dates, and future filter-like text", () => {
+  const parsed = parseQuery("name: cat type:video during:2026 path:trips");
+  assert.equal(parsed.scope, "name");
+  assert.equal(parsed.media, "video");
+  assert.equal(parsed.body.trim().replace(/\s+/g, " "), "cat path:trips");
+  assert.equal(withScope("cat type:video", "ocr"), "ocr: cat type:video");
+  assert.equal(withMediaFilter("name: cat type:video", "image"), "name: cat type:image");
+  assert.equal(withMediaFilter("type:video", null), "");
+});
+
+test("media operator filters a library without search text", () => {
+  const { search, requests } = fixture();
+  const catalog = [
+    { id: "1", mediaKind: "image", date: 1 },
+    { id: "2", mediaKind: "video", date: 1 },
+  ] as Parameters<Controller["apply"]>[0];
+  search.query = "type:video";
+  search.schedule("C:/pictures", catalog, "modified");
+  assert.deepEqual(
+    search.apply(catalog).items.map((item) => item.id),
+    ["2"],
+  );
+  assert.equal(search.apply(catalog).matchTotal, 1);
+  assert.deepEqual(requests, []);
+  search.dispose();
+});
+
+test("media operator narrows filename matches without reaching the backend", async () => {
+  const { search, requests } = fixture();
+  const catalog = [
+    { id: "1", displayName: "cat.jpg", mediaKind: "image", date: 1 },
+    { id: "2", displayName: "cat.mp4", mediaKind: "video", date: 1 },
+  ] as Parameters<Controller["apply"]>[0];
+  search.query = "name: cat type:video";
+  search.schedule("C:/pictures", catalog, "modified");
+  await pause();
+  assert.deepEqual(
+    search.apply(catalog).items.map((item) => item.id),
+    ["2"],
+  );
+  assert.deepEqual(requests, []);
+  search.dispose();
+});
 
 test("visual search waits for image coverage, then runs the unchanged query when ready", async () => {
   const { search, requests } = fixture();
@@ -66,6 +113,7 @@ test("adding a library starts one backend image index without enabling OCR", asy
         root: "C:/new-pictures",
         ocr: false,
         image: true,
+        indexVideos: true,
         scan: { recursive: true, cleanup: false },
       },
     },

@@ -1,7 +1,7 @@
 <!--
   @component
-  Full-media detail view: still images use a measured transform stage while videos retain their
-  native controls. This is the one place the app requests the restricted `original://` protocol.
+  Full-media detail view: still images use a measured transform stage while video playback lives
+  in VideoPlayer. Original files are requested through the restricted `original://` protocol.
 -->
 <script module lang="ts">
   export interface DetailViewStatus {
@@ -26,6 +26,7 @@
   import { onMount } from "svelte";
 
   import { originalUrlOf, type GalleryItem } from "../lib/gallery/types";
+  import VideoPlayer from "./VideoPlayer.svelte";
 
   type ZoomMode = "fit" | "actual" | "custom";
 
@@ -36,6 +37,7 @@
 
   let {
     item,
+    initialPlayback = null,
     hasPrev,
     hasNext,
     onclose,
@@ -45,6 +47,7 @@
     onfilemenu,
   }: {
     item: GalleryItem;
+    initialPlayback?: { currentTime: number; muted: boolean } | null;
     hasPrev: boolean;
     hasNext: boolean;
     onclose: () => void;
@@ -206,8 +209,7 @@
     }
   }
 
-  /** Cached media can be ready before the component's load listener is installed. Observe
-   * events and reconcile the DOM state on attachment so readiness never depends on timing. */
+  /** Cached images can be ready before the component's load listener is installed. */
   function observeImage(image: HTMLImageElement): () => void {
     const loaded = (): void => {
       naturalWidth = image.naturalWidth;
@@ -223,20 +225,6 @@
     return () => {
       image.removeEventListener("load", loaded);
       image.removeEventListener("error", handleMediaError);
-    };
-  }
-
-  function observeVideo(video: HTMLVideoElement): () => void {
-    const loaded = (): void => {
-      loading = false;
-    };
-    video.addEventListener("loadedmetadata", loaded);
-    video.addEventListener("error", handleMediaError);
-    if (video.error) handleMediaError();
-    else if (video.readyState >= HTMLMediaElement.HAVE_METADATA) loaded();
-    return () => {
-      video.removeEventListener("loadedmetadata", loaded);
-      video.removeEventListener("error", handleMediaError);
     };
   }
 
@@ -296,6 +284,12 @@
     if (
       event.defaultPrevented ||
       (event.target instanceof Element && event.target.closest(".metadata-panel"))
+    )
+      return;
+    if (
+      item.mediaKind === "video" &&
+      event.target instanceof Element &&
+      event.target.closest(".video-player")
     )
       return;
     if (event.key === "ArrowLeft" && hasPrev) onprev();
@@ -430,8 +424,12 @@
         <p>Couldn't load the original file. It may have moved or been deleted.</p>
       </div>
     {:else if item.mediaKind === "video"}
-      <!-- svelte-ignore a11y_media_has_caption -->
-      <video class="detail-video" {src} controls autoplay {@attach observeVideo}></video>
+      <VideoPlayer
+        {src}
+        {initialPlayback}
+        onready={() => (loading = false)}
+        onerror={handleMediaError}
+      />
     {:else}
       <div
         class="detail-image-stage"
@@ -502,12 +500,6 @@
     min-height: 0;
     align-items: center;
     justify-content: center;
-  }
-
-  .detail-video {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
   }
 
   .detail-image-stage {
