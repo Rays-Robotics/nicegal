@@ -27,24 +27,31 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      # The cached FFmpeg package was restored in the Windows bindgen crash run.
-      # Build it fresh until the cache-related failure is understood.
+      - name: Restore static FFmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v6
+        with:
+          path: nicegal-server/.deps/ffmpeg
+          key: ffmpeg-n9.0.1-windows-${{ hashFiles('.github/ffmpeg/windows-x64.args', '.github/ffmpeg/nasm-windows.patch', '.github/actions/ffmpeg-windows/action.yml') }}-v1
+
       - name: Prepare static FFmpeg
         uses: ./.github/actions/ffmpeg-windows
         with:
-          cache-hit: "false"
+          cache-hit: ${{ steps.ffmpeg-cache.outputs.cache-hit }}
 
       - name: Locate libclang
         shell: pwsh
         run: |
           $candidates = @(
-            "$env:ProgramFiles/LLVM/bin",
-            "$env:VCINSTALLDIR/Tools/Llvm/x64/bin"
+            "$env:VCINSTALLDIR/Tools/Llvm/x64/bin",
+            "$env:ProgramFiles/LLVM/bin"
           )
           $clangDirectory = $candidates | Where-Object {
             Test-Path -LiteralPath (Join-Path $_ 'libclang.dll')
           } | Select-Object -First 1
           if (-not $clangDirectory) { throw 'The runner has no libclang.dll for Rust bindgen.' }
+          $clangVersion = (Get-Item -LiteralPath (Join-Path $clangDirectory 'libclang.dll')).VersionInfo.ProductVersion
+          Write-Host "Using libclang $clangVersion from $clangDirectory"
           "LIBCLANG_PATH=$clangDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Locate Visual C++ runtime
