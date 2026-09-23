@@ -14,6 +14,8 @@ runs:
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         rust-src-dir: nicegal-server
+        # FFmpeg's bindgen build script formats its generated bindings.
+        components: rustfmt
 
     # Backend build scripts use uv for the provider-specific ONNX Runtime environment.
     - name: Setup uv

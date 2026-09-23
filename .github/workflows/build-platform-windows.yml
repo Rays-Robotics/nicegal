@@ -27,17 +27,12 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Restore static FFmpeg
-        id: ffmpeg-cache
-        uses: actions/cache@v6
-        with:
-          path: nicegal-server/.deps/ffmpeg
-          key: ffmpeg-n9.0.1-windows-${{ hashFiles('.github/ffmpeg/windows-x64.args', '.github/ffmpeg/nasm-windows.patch', '.github/actions/ffmpeg-windows/action.yml') }}-v1
-
+      # The cached FFmpeg package was restored in the Windows bindgen crash run.
+      # Build it fresh until the cache-related failure is understood.
       - name: Prepare static FFmpeg
         uses: ./.github/actions/ffmpeg-windows
         with:
-          cache-hit: ${{ steps.ffmpeg-cache.outputs.cache-hit }}
+          cache-hit: "false"
 
       - name: Locate libclang
         shell: pwsh
@@ -116,4 +111,3 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.dmg
-
