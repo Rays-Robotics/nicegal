@@ -1,0 +1,48 @@
+name: Build desktop platform
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      os:
+        required: true
+        type: string
+      platform:
+        required: true
+        type: string
+      arch:
+        required: true
+        type: string
+    secrets:
+      NICEGAL_PAT:
+        required: false
+
+jobs:
+  linux:
+    if: inputs.platform == 'linux'
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      version: ${{ inputs.version }}
+    secrets:
+      NICEGAL_PAT: ${{ secrets.NICEGAL_PAT }}
+
+  windows:
+    if: inputs.platform == 'windows'
+    uses: ./.github/workflows/build-platform-windows.yml
+    with:
+      version: ${{ inputs.version }}
+    secrets:
+      NICEGAL_PAT: ${{ secrets.NICEGAL_PAT }}
+
+  macos:
+    if: startsWith(inputs.platform, 'macos-')
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      version: ${{ inputs.version }}
+      os: ${{ inputs.os }}
+      platform: ${{ inputs.platform }}
+      arch: ${{ inputs.arch }}
+    secrets:
+      NICEGAL_PAT: ${{ secrets.NICEGAL_PAT }}
