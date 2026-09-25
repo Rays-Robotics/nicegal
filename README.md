@@ -2,17 +2,17 @@
 
 [**Download the latest release**](https://github.com/centuryofimage/nicegal/releases/latest)
 
-nicegal is a super fast desktop gallery for photos and videos. it has powerful search features, and is designed to help people find stuff in gigantic unsorted downloads folders.
+Nicegal is a super fast desktop gallery for photos and videos. It has powerful search features, and is designed to help people find stuff in gigantic unsorted downloads folders.
 
-it supports searching the text inside images with optical character recognition (PaddleOCR), and visually searching photos and videos with CLIP. you can also search with an image. the OCR and CLIP search indexing uses your gpu if you have one, through DirectML and WebGPU.
+It supports searching the text inside images with optical character recognition (PaddleOCR), and visually searching photos and videos with CLIP. you can also search with an image. the OCR and CLIP search indexing uses your gpu if you have one, through DirectML and WebGPU.
 
 <img src="docs/images/gallery-composer.jpg" width="888">
 
 - 3 different phone style gallery layouts, date navigation
-- browse existing folders without moving your files.
-- browse and play videos alongside photos, with thumbnails and an image/video filter.
-- find exact words, related text (vecsearch), visual concepts, or similar images.
-- combine descriptions and image references in one search
+- Browse existing folders without moving your files.
+- Browse and play videos alongside photos, with thumbnails and an image/video filter.
+- Find exact words, related text (vecsearch), visual concepts, or similar images.
+- Combine descriptions and image references in one search
 
 <img src="docs/images/gallery-all-search.png" width="888">
 
@@ -29,9 +29,9 @@ it supports searching the text inside images with optical character recognition 
 
 [Downloads](https://github.com/centuryofimage/nicegal/releases)
 
-search models download on first use. photos and videos are processed locally, all data remains on your computer, no telemetry.
+Search models are downloaded on first use. Photos and videos are processed locally, all data remains on your computer, and no telemetry is collected.
 
-built with svelte and a
+Built with svelte and a
 [rust search backend](https://github.com/centuryofimage/nicegal-server), using DirectML and OpenVino thru [ort](https://ort.pyke.io/).
 
 ## Perf tips
